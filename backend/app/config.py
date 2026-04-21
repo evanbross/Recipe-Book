@@ -1,7 +1,12 @@
-from pydantic_settings import BaseSettings
+from pathlib import Path
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
+
     database_url: str
     anthropic_api_key: str
     r2_account_id: str
@@ -11,9 +16,6 @@ class Settings(BaseSettings):
     r2_public_url: str
     secret_key: str
     cors_origins: str = "http://localhost:5173"
-
-    class Config:
-        env_file = ".env"
 
 
 settings = Settings()

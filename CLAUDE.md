@@ -24,3 +24,30 @@
 - Secure coding patterns (no injection risks, no overly broad exception catches, validate at boundaries)
 - Idiomatic use of the language and framework — prefer stdlib/framework features over hand-rolled solutions
 - Consistent naming and style conventions already present in the codebase
+
+## SQLAlchemy / Python Datetime
+
+Never use `datetime.utcnow` as a column default — it is deprecated in Python 3.12+. Always use `lambda: datetime.now(timezone.utc)` instead:
+
+```python
+# Wrong
+created_at = Column(DateTime, default=datetime.utcnow)
+
+# Right
+created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+```
+
+## Pydantic Settings
+
+Always use `SettingsConfigDict` instead of the inner `class Config` pattern, which is deprecated in Pydantic v2:
+
+```python
+# Wrong
+class Settings(BaseSettings):
+    class Config:
+        env_file = ".env"
+
+# Right
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env")
+```

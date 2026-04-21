@@ -5,8 +5,8 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: recipe_user
-      POSTGRES_PASSWORD: recipe_pass
+      POSTGRES_USER: user_recipe_app
+      POSTGRES_PASSWORD: recipe_app
       POSTGRES_DB: recipe_db
     ports:
       - "5432:5432"

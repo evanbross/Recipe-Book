@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 *)",
+      "Bash(.venv/Scripts/python -c ' *)",
+      "Bash(F:/Evan-F/Projects/Recipe App/.venv/Scripts/python *)",
+      "Bash('F:/Evan-F/Projects/Recipe App/.venv/Scripts/python' -c ' *)"
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
     Column, Integer, String, Text, DateTime, ForeignKey, Table, Index
 )
@@ -72,8 +72,8 @@ class Recipe(Base):
     # Full-text search vector (populated by DB trigger or application)
     search_vector = Column(TSVECTOR, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     tags = relationship("Tag", secondary=recipe_tags, back_populates="recipes")
 
