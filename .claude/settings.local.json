@@ -4,7 +4,12 @@
       "Bash(python3 *)",
       "Bash(.venv/Scripts/python -c ' *)",
       "Bash(F:/Evan-F/Projects/Recipe App/.venv/Scripts/python *)",
-      "Bash('F:/Evan-F/Projects/Recipe App/.venv/Scripts/python' -c ' *)"
+      "Bash('F:/Evan-F/Projects/Recipe App/.venv/Scripts/python' -c ' *)",
+      "Bash(grep -E \"\\\\.md$\")",
+      "Bash(netstat -ano)",
+      "Bash(uv sync *)",
+      "Bash(Get-ChildItem -Path \"F:\\\\Evan-F\\\\Projects\" -Directory)",
+      "Bash(Select-Object Name)"
     ]
   }
 }

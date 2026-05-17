@@ -1,0 +1,30 @@
+[project]
+name = "recipe-app-backend"
+version = "0.1.0"
+description = "Capture and organize recipes from web pages, photos, and scans."
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.115.12",
+    "uvicorn>=0.34.0",
+    "sqlalchemy>=2.0.40",
+    "alembic>=1.15.2",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.1",
+    "python-dotenv>=1.1.0",
+    "httpx>=0.28.1",
+    "beautifulsoup4>=4.13.4",
+    "anthropic>=0.51.0",
+    "boto3>=1.37.38",
+    "Pillow>=12.2.0",
+    "python-multipart>=0.0.20",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-cov>=6.1.0",
+    "psycopg2-binary>=2.9.10",
+]
+
+[tool.uv]
+link-mode = "symlink"

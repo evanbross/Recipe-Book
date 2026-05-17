@@ -1,4 +1,4 @@
-# Codex Agent Instructions — Recipe App
+# AI Agent Instructions — Recipe App
 
 ## Standards Files — Read These First
 
@@ -13,6 +13,9 @@ making any changes.
 - `../Dev-Standards/TESTING_STANDARDS.md`
 - `../Dev-Standards/INFRASTRUCTURE_STANDARDS.md`
 - `../Dev-Standards/CODEX_CODING_STANDARDS.md`
+- `../Dev-Standards/CODEX_SESSION_RULES.md`
+- `../Dev-Standards/CODEX_REVIEW_CHECKLIST.md`
+- `../Dev-Standards/GEMINI_SESSION_STANDARDS.md`
 
 ---
 
