@@ -81,13 +81,26 @@ def _object_url(key: str) -> str:
     return f"{settings.minio_public_url}/{key}"
 
 
-def upload_image(image_bytes: bytes, media_type: str = "image/jpeg", folder: str = "originals") -> dict[str, str]:
+def upload_image(
+    image_bytes: bytes,
+    media_type: str = "image/jpeg",
+    folder: str = "originals",
+    metadata: dict[str, str] | None = None,
+) -> dict[str, str]:
     """
     Upload original image to MinIO and generate a thumbnail.
-    Returns dict with keys: image_key, image_url, thumbnail_key, thumbnail_url
+    Returns dict with keys: image_key, image_url, thumbnail_key, thumbnail_url.
+    Optional metadata is stored as S3 object metadata on both objects.
+    object-group-id is always added automatically so original and thumbnail can
+    be linked without parsing key paths.
     """
     ext = media_type.split("/")[-1].replace("jpeg", "jpg")
     uid = uuid.uuid4().hex
+
+    merged_metadata: dict[str, str] = {}
+    if metadata:
+        merged_metadata.update(metadata)
+    merged_metadata["object-group-id"] = uid
 
     # Upload original
     image_key = f"{folder}/{uid}.{ext}"
@@ -96,6 +109,7 @@ def upload_image(image_bytes: bytes, media_type: str = "image/jpeg", folder: str
         Key=image_key,
         Body=image_bytes,
         ContentType=media_type,
+        Metadata=merged_metadata,
     )
 
     # Generate and upload thumbnail
@@ -106,6 +120,7 @@ def upload_image(image_bytes: bytes, media_type: str = "image/jpeg", folder: str
         Key=thumbnail_key,
         Body=thumb_bytes,
         ContentType="image/jpeg",
+        Metadata=merged_metadata,
     )
 
     return {
@@ -114,6 +129,32 @@ def upload_image(image_bytes: bytes, media_type: str = "image/jpeg", folder: str
         "thumbnail_key": thumbnail_key,
         "thumbnail_url": _object_url(thumbnail_key),
     }
+
+
+def tag_objects_with_recipe_id(
+    image_key: str,
+    thumbnail_key: str | None,
+    recipe_id: int,
+) -> None:
+    """
+    Apply a recipe-id S3 tag to the original image and thumbnail.
+    Called after the DB row is committed so recipe.id is available.
+    Tags are updateable without re-upload, unlike object Metadata.
+    Failures are logged as warnings — tagging is never fatal.
+    """
+    tag_set = [{"Key": "recipe-id", "Value": str(recipe_id)}]
+    for key in filter(None, [image_key, thumbnail_key]):
+        try:
+            _s3.put_object_tagging(
+                Bucket=settings.minio_bucket_name,
+                Key=key,
+                Tagging={"TagSet": tag_set},
+            )
+        except (BotoCoreError, ClientError) as exc:
+            logger.warning(
+                "Failed to tag MinIO object '%s' with recipe-id=%s: %s",
+                key, recipe_id, exc,
+            )
 
 
 def delete_image(image_key: str, thumbnail_key: Optional[str] = None) -> None:

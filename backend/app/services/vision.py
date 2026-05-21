@@ -4,6 +4,7 @@ from images (photos, scans) or raw web page text.
 """
 import base64
 import json
+import re
 from typing import Optional
 import anthropic
 from app.config import settings
@@ -29,10 +30,79 @@ Return ONLY the JSON object. No markdown, no explanation, no extra text.
 """.strip()
 
 
+def _parse_iso_duration(value: object) -> str | None:
+    """Convert an ISO 8601 duration string like 'PT1H30M' to '1 hour 30 minutes'."""
+    if not value:
+        return None
+    s = str(value).strip()
+    match = re.fullmatch(r"P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", s)
+    if not match:
+        return s  # already plain text (e.g. "30 minutes")
+    days, hours, minutes, seconds = match.groups()
+    parts: list[str] = []
+    if days:
+        parts.append(f"{days} day{'s' if int(days) != 1 else ''}")
+    if hours:
+        parts.append(f"{hours} hour{'s' if int(hours) != 1 else ''}")
+    if minutes:
+        parts.append(f"{minutes} minute{'s' if int(minutes) != 1 else ''}")
+    if seconds:
+        parts.append(f"{seconds} second{'s' if int(seconds) != 1 else ''}")
+    return " ".join(parts) or None
+
+
+def _jsonld_ingredients(value: object) -> str | None:
+    if not value:
+        return None
+    if isinstance(value, str):
+        return value.strip() or None
+    return "\n".join(str(i) for i in value) or None
+
+
+def _jsonld_instructions(value: object) -> str | None:
+    if not value:
+        return None
+    if isinstance(value, str):
+        return value.strip() or None
+    steps: list[str] = []
+    for i, step in enumerate(value, 1):
+        if isinstance(step, str):
+            steps.append(f"{i}. {step}")
+        elif isinstance(step, dict):
+            text = step.get("text") or step.get("name") or ""
+            steps.append(f"{i}. {text}")
+    return "\n".join(steps) or None
+
+
+def _jsonld_servings(value: object) -> str | None:
+    if not value:
+        return None
+    if isinstance(value, list):
+        return str(value[0]) if value else None
+    return str(value).strip() or None
+
+
+def extract_from_jsonld(recipe_data: dict) -> CaptureResult:
+    """
+    Build a CaptureResult directly from a JSON-LD Recipe dict.
+    No Claude API call — the structured data is already authoritative.
+    """
+    return CaptureResult(
+        title=recipe_data.get("name") or "Untitled Recipe",
+        description=recipe_data.get("description"),
+        ingredients=_jsonld_ingredients(recipe_data.get("recipeIngredient")),
+        instructions=_jsonld_instructions(recipe_data.get("recipeInstructions")),
+        servings=_jsonld_servings(recipe_data.get("recipeYield")),
+        prep_time=_parse_iso_duration(recipe_data.get("prepTime")),
+        cook_time=_parse_iso_duration(recipe_data.get("cookTime")),
+    )
+
+
 def _parse_claude_response(text: str) -> CaptureResult:
     """Parse Claude's JSON response into a CaptureResult."""
     clean = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     data = json.loads(clean)
+    data["title"] = data.get("title") or "Untitled Recipe"
     return CaptureResult(**data)
 
 

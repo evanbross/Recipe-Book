@@ -1,0 +1,730 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* ── Connect state ─────────────────────────────────────────────────────────── */
+
+.connectBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2rem 1.5rem;
+  border: 1px dashed var(--border, #e2e8f0);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.connectBox h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.connectBox p {
+  margin: 0;
+  color: var(--text-muted, #64748b);
+  font-size: 0.875rem;
+  max-width: 380px;
+}
+
+.connectIcon {
+  color: var(--text-muted, #94a3b8);
+}
+
+.prereq {
+  font-size: 0.8rem !important;
+  background: var(--surface-2, #f8fafc);
+  padding: 0.4rem 0.75rem;
+  border-radius: 4px;
+  width: 100%;
+  max-width: 380px;
+}
+
+.prereq code {
+  font-size: 0.8rem;
+  color: var(--text, #1e293b);
+}
+
+/* ── Authenticated header ──────────────────────────────────────────────────── */
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.connectedBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: #16a34a;
+  background: #dcfce7;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+}
+
+.disconnectBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 6px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--text-muted, #64748b);
+  cursor: pointer;
+}
+
+.disconnectBtn:hover:not(:disabled) {
+  background: var(--surface-2, #f8fafc);
+}
+
+/* ── Scan controls ─────────────────────────────────────────────────────────── */
+
+.scanSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-items: flex-start;
+}
+
+.scanSection .hint {
+  align-self: stretch;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.825rem;
+  color: var(--text-muted, #64748b);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+/* ── Progress bar ──────────────────────────────────────────────────────────── */
+
+.progress {
+  position: relative;
+  height: 20px;
+  background: var(--surface-2, #f1f5f9);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progressBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: var(--primary, #3b82f6);
+  transition: width 0.3s ease;
+}
+
+.progressLabel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #1e293b;
+  mix-blend-mode: difference;
+}
+
+/* ── Results summary ───────────────────────────────────────────────────────── */
+
+.results {
+  font-size: 0.875rem;
+  color: var(--text-muted, #475569);
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-2, #f8fafc);
+  border-radius: 6px;
+}
+
+.errorCount {
+  color: #dc2626;
+}
+
+/* ── Settings ──────────────────────────────────────────────────────────────── */
+
+.settingsSection {
+  border-top: 1px solid var(--border, #e2e8f0);
+  padding-top: 0.75rem;
+}
+
+.settingsToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--text-muted, #64748b);
+  padding: 0;
+}
+
+.settingsToggle:hover {
+  color: var(--text, #1e293b);
+}
+
+.settingsBody {
+  margin-top: 0.75rem;
+}
+
+.settingRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.settingRow input[type="checkbox"] {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.reviewNote {
+  color: var(--text-muted, #94a3b8);
+  font-weight: normal;
+}
+
+/* ── Candidate queue ───────────────────────────────────────────────────────── */
+
+.candidateSection {
+  border-top: 1px solid var(--border, #e2e8f0);
+  padding-top: 0.75rem;
+}
+
+.candidateHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+}
+
+.badge {
+  background: var(--primary, #3b82f6);
+  color: white;
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.75rem;
+}
+
+.empty {
+  font-size: 0.875rem;
+  color: var(--text-muted, #94a3b8);
+  margin: 0;
+}
+
+.candidateList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.candidateItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface-2, #f8fafc);
+  border-radius: 6px;
+}
+
+.candidateMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.candidateMeta strong {
+  font-size: 0.875rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.candidateSender {
+  font-size: 0.75rem;
+  color: var(--text-muted, #94a3b8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.candidateActions {
+  display: flex;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+/* ── Admin section ─────────────────────────────────────────────────────────── */
+
+.adminRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.adminHint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted, #94a3b8);
+  line-height: 1.4;
+}
+
+.resetBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: none;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  color: #dc2626;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.resetBtn:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.resetBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Scan progress dialog ──────────────────────────────────────────────────── */
+
+.scanDialog {
+  background: var(--surface, #fff);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+}
+
+.scanDialogHeader {
+  padding: 1.1rem 1.5rem 0.8rem;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+}
+
+.scanDialogHeader h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.scanProgressWrap {
+  padding: 1rem 1.5rem 0.25rem;
+}
+
+.scanProgress {
+  position: relative;
+  height: 22px;
+  background: var(--surface-2, #f1f5f9);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.scanProgressBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: var(--primary, #3b82f6);
+  transition: width 0.5s ease;
+}
+
+.scanProgressPct {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.scanProgressCount {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted, #64748b);
+  text-align: center;
+}
+
+.scanCurrentFolder {
+  margin: 0.2rem 0 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted, #94a3b8);
+  text-align: center;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scanStats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.6rem;
+  padding: 0.9rem 1.5rem;
+}
+
+.statCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.6rem 0.25rem;
+  background: var(--surface-2, #f8fafc);
+  border-radius: 8px;
+}
+
+.statValue {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text, #1e293b);
+  line-height: 1;
+}
+
+.statLabel {
+  font-size: 0.65rem;
+  color: var(--text-muted, #64748b);
+  text-align: center;
+  line-height: 1.3;
+}
+
+.scanTiming {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 1.5rem 0.85rem;
+  font-size: 0.78rem;
+  color: var(--text-muted, #64748b);
+  gap: 0.5rem;
+}
+
+.scanTiming svg {
+  vertical-align: middle;
+  margin-right: 0.2rem;
+}
+
+.scanErrorNote {
+  margin: 0;
+  padding: 0 1.5rem 0.75rem;
+  font-size: 0.8rem;
+  color: #dc2626;
+}
+
+.scanDialogFooter {
+  padding: 0.75rem 1.5rem 1.1rem;
+  border-top: 1px solid var(--border, #e2e8f0);
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ── Scan report dialog ────────────────────────────────────────────────────── */
+
+.reportModal {
+  max-width: min(1200px, 95vw);
+  max-height: 88vh;
+}
+
+.reportSummary {
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  color: var(--text-muted, #64748b);
+}
+
+.reportFilters {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.65rem 1.25rem;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  background: var(--surface-2, #f8fafc);
+  overflow-x: auto;
+}
+
+.filterTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.8rem;
+  color: var(--text-muted, #64748b);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.filterTab:hover { background: var(--surface, #fff); color: var(--text, #1e293b); }
+.filterTabActive {
+  background: var(--primary, #3b82f6);
+  border-color: var(--primary, #3b82f6);
+  color: #fff;
+}
+.filterTabActive:hover { background: var(--primary, #3b82f6); color: #fff; }
+
+.filterCount {
+  background: rgba(0,0,0,0.12);
+  border-radius: 999px;
+  padding: 0 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.filterTabActive .filterCount { background: rgba(255,255,255,0.25); }
+
+.reportTableWrap {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.reportTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.reportTable th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-2, #f8fafc);
+  padding: 0.55rem 0.85rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.73rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted, #64748b);
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  white-space: nowrap;
+}
+
+.reportTable td {
+  padding: 0.5rem 0.85rem;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  vertical-align: middle;
+  max-width: 0;           /* enables text-overflow in table cells */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thResult  { width: 120px; }
+.thSender  { width: 18%; }
+.thSubject { width: 28%; }
+.thFolder  { width: 120px; }
+.thDetail  { width: auto; }
+
+.tdResult  { width: 110px; }
+.tdSender  { color: var(--text-muted, #64748b); font-size: 0.78rem; }
+.tdSubject { color: var(--text, #1e293b); }
+.tdFolder  { color: var(--text-muted, #64748b); font-size: 0.78rem; }
+.tdDetail  { color: var(--text, #1e293b); }
+
+/* Alternating row stripes */
+.reportTable tbody tr           { background: var(--color-surface, #fff); }
+.reportTable tbody tr.rowEven   { background: var(--color-surface-alt, #f8fafc); }
+
+/* Per-result left border accent (does not override stripe background) */
+.row_imported  { border-left: 3px solid #16a34a; }
+.row_candidate { border-left: 3px solid #2563eb; }
+.row_error     { border-left: 3px solid #dc2626; }
+.row_no_recipe { border-left: 3px solid transparent; }
+
+.resultPill {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pill_imported  { background: #dcfce7; color: #15803d; }
+.pill_candidate { background: #dbeafe; color: #1d4ed8; }
+.pill_no_recipe { background: #f1f5f9; color: #64748b; }
+.pill_error     { background: #fee2e2; color: #b91c1c; }
+
+.detailMuted { color: var(--text-muted, #94a3b8); }
+
+.reportLoading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2.5rem 1.5rem;
+  color: var(--text-muted, #64748b);
+  font-size: 0.875rem;
+}
+
+.reportError,
+.reportEmpty {
+  padding: 2rem 1.5rem;
+  font-size: 0.875rem;
+  color: var(--text-muted, #94a3b8);
+  margin: 0;
+}
+.reportError { color: #dc2626; }
+
+.reportFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--border, #e2e8f0);
+  gap: 0.75rem;
+}
+
+.reportSaveGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.saveLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--text-muted, #64748b);
+  margin-right: 0.1rem;
+}
+
+/* ── Review modal ──────────────────────────────────────────────────────────── */
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal {
+  background: var(--surface, #fff);
+  border-radius: 10px;
+  width: 100%;
+  max-width: 640px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+}
+
+.modalHeader h3 {
+  margin: 0;
+  font-size: 1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.modalClose {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, #94a3b8);
+  padding: 0.2rem;
+  flex-shrink: 0;
+}
+
+.modalClose:hover:not(:disabled) {
+  color: var(--text, #1e293b);
+}
+
+.modalMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.6rem 1.25rem;
+  font-size: 0.8rem;
+  color: var(--text-muted, #64748b);
+  background: var(--surface-2, #f8fafc);
+}
+
+.modalBody {
+  padding: 1rem 1.25rem;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.modalBody h4 {
+  margin: 0 0 0.4rem;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted, #64748b);
+}
+
+.modalDesc {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text, #475569);
+}
+
+.modalTimes {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.8rem;
+  color: var(--text-muted, #64748b);
+}
+
+.recipeText {
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 0.85rem;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.modalFooter {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--border, #e2e8f0);
+}

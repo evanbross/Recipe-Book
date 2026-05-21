@@ -1,9 +1,17 @@
+from datetime import datetime, UTC
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+
 from app.database import get_db
 from app import models, schemas
+from app.services import image_candidates as img_cand_svc
+from app.services import scraper as scraper_svc
+from app.services import storage as storage_svc
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
+
+ALLOWED_MEDIA_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
 
 def _get_or_404(db: Session, recipe_id: int) -> models.Recipe:
@@ -52,9 +60,93 @@ def update_recipe(recipe_id: int, payload: schemas.RecipeUpdate, db: Session = D
 
 @router.delete("/{recipe_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_recipe(recipe_id: int, db: Session = Depends(get_db)) -> None:
-    from app.services import storage as storage_svc
     recipe = _get_or_404(db, recipe_id)
     if recipe.image_key:
         storage_svc.delete_image(recipe.image_key, recipe.thumbnail_key)
     db.delete(recipe)
+    db.commit()
+
+
+# ── Image candidate endpoints ─────────────────────────────────────────────────
+
+@router.get("/{recipe_id}/image-candidates", response_model=list[schemas.ImageCandidateOut])
+def get_image_candidates(recipe_id: int, db: Session = Depends(get_db)) -> list[schemas.ImageCandidateOut]:
+    _get_or_404(db, recipe_id)
+    return (
+        db.query(models.RecipeImageCandidate)
+        .filter(models.RecipeImageCandidate.recipe_id == recipe_id)
+        .order_by(models.RecipeImageCandidate.rank)
+        .all()
+    )
+
+
+@router.post("/{recipe_id}/select-image", response_model=schemas.RecipeOut)
+def select_recipe_image(
+    recipe_id: int,
+    payload: schemas.SelectImageRequest,
+    db: Session = Depends(get_db),
+) -> schemas.RecipeOut:
+    recipe = _get_or_404(db, recipe_id)
+
+    try:
+        img_bytes, content_type = scraper_svc.fetch_page_image(payload.image_url)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Failed to fetch image: {exc}")
+
+    if content_type not in ALLOWED_MEDIA_TYPES:
+        raise HTTPException(status_code=415, detail=f"Unsupported image type: {content_type}")
+
+    try:
+        stored = storage_svc.upload_image(
+            img_bytes,
+            content_type,
+            metadata={
+                "source-type": "email",
+                "recipe-title": recipe.title[:512],
+                "captured-at": datetime.now(UTC).isoformat(),
+                "app-name": "recipe-app",
+            },
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Storage upload failed: {exc}")
+
+    # Determine which candidate was selected (for preference learning)
+    candidates = (
+        db.query(models.RecipeImageCandidate)
+        .filter(models.RecipeImageCandidate.recipe_id == recipe_id)
+        .order_by(models.RecipeImageCandidate.rank)
+        .all()
+    )
+    selected_rank = 0
+    sender_domain = ""
+    for c in candidates:
+        c.selected = c.image_url == payload.image_url
+        if c.selected:
+            selected_rank = c.rank
+            sender_domain = c.sender_domain or ""
+
+    recipe.image_key = stored["image_key"]
+    recipe.image_url = stored["image_url"]
+    recipe.thumbnail_key = stored["thumbnail_key"]
+    recipe.thumbnail_url = stored["thumbnail_url"]
+    recipe.image_pending = False
+
+    db.commit()
+    db.refresh(recipe)
+
+    storage_svc.tag_objects_with_recipe_id(
+        stored["image_key"], stored.get("thumbnail_key"), recipe_id
+    )
+
+    if sender_domain:
+        img_cand_svc.update_preference(db, sender_domain, payload.image_url, selected_rank)
+
+    return recipe
+
+
+@router.delete("/{recipe_id}/image-pending", status_code=status.HTTP_204_NO_CONTENT)
+def skip_image_selection(recipe_id: int, db: Session = Depends(get_db)) -> None:
+    """Dismiss the image picker without selecting — clears the image_pending flag."""
+    recipe = _get_or_404(db, recipe_id)
+    recipe.image_pending = False
     db.commit()

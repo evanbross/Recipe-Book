@@ -4,6 +4,7 @@ import Home from './pages/Home'
 import RecipeDetail from './pages/RecipeDetail'
 import AddRecipe from './pages/AddRecipe'
 import Search from './pages/Search'
+import Settings from './pages/Settings'
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
           <Route path="recipes/:id" element={<RecipeDetail />} />
           <Route path="add" element={<AddRecipe />} />
           <Route path="search" element={<Search />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
     </BrowserRouter>

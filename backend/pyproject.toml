@@ -17,6 +17,9 @@ dependencies = [
     "boto3>=1.37.38",
     "Pillow>=12.2.0",
     "python-multipart>=0.0.20",
+    "google-auth>=2.36.0",
+    "google-auth-oauthlib>=1.2.0",
+    "google-api-python-client>=2.164.0",
 ]
 
 [dependency-groups]

@@ -1,0 +1,349 @@
+.section {
+  margin-bottom: 2rem;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  color: var(--color-text);
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ── Gmail auth row ────────────────────────────────────────────────────────── */
+
+.authRow {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.connectedBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #16a34a;
+  background: #dcfce7;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+}
+
+.disconnectedBadge {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+
+.disconnectBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: inherit;
+}
+.disconnectBtn:hover:not(:disabled) { background: var(--color-surface-alt); }
+.disconnectBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.prereq {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  background: var(--color-surface-alt);
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  margin: 0;
+}
+.prereq code { font-size: 0.82rem; color: var(--color-text); }
+
+/* ── Settings form ─────────────────────────────────────────────────────────── */
+
+.settingsForm {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 1rem;
+}
+
+.checkRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.checkRow input[type="checkbox"] { margin-top: 3px; flex-shrink: 0; }
+
+.muted { color: var(--color-text-muted); font-weight: normal; }
+
+.fieldRow {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.fieldLabel {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  min-width: 160px;
+}
+
+.fieldInput { max-width: 240px; }
+
+/* ── Label chip input ──────────────────────────────────────────────────────── */
+
+.fieldRowTop { align-items: flex-start; }
+
+.labelChipArea {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  flex: 1;
+}
+
+.labelChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-height: 28px;
+}
+
+.labelChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem 0.15rem 0.75rem;
+  font-size: 0.82rem;
+  color: var(--color-text);
+}
+
+.labelChipRemove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.1rem;
+  line-height: 1;
+  font-size: 1.1rem;
+  transition: color 0.15s;
+}
+.labelChipRemove:hover { color: #dc2626; }
+
+.labelAddRow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.labelAddInput { max-width: 200px; }
+
+.labelAddBtn {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.28rem 0.65rem;
+  font-size: 0.82rem;
+  color: var(--color-text);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.labelAddBtn:hover { background: var(--color-surface-alt); }
+
+.labelHint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.numberRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.fieldInputShort { width: 80px; }
+
+.unit {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.saveBtn { align-self: flex-start; }
+
+/* ── Admin section ─────────────────────────────────────────────────────────── */
+
+.adminRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.adminTitle {
+  margin: 0 0 0.3rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+
+.adminDesc {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  max-width: 480px;
+  line-height: 1.5;
+}
+
+.resetBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+  color: #dc2626;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.resetBtn:hover:not(:disabled) { background: #fef2f2; }
+.resetBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.adminRowBorder {
+  border-top: 1px solid var(--color-border);
+  padding-top: 1rem;
+}
+
+/* ── Watch List section ────────────────────────────────────────────────────── */
+
+.watchEmpty {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.watchTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.watchTable th {
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  padding: 0 0.6rem 0.5rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.watchTable td {
+  padding: 0.5rem 0.6rem 0.5rem 0;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+
+.watchTable tbody tr:last-child td { border-bottom: none; }
+
+.watchRowDue td { background: #fefce8; }
+
+.watchName { font-weight: 500; white-space: nowrap; }
+
+.watchUrl {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watchUrl a {
+  color: var(--color-accent);
+  font-size: 0.82rem;
+}
+
+.watchDays { white-space: nowrap; color: var(--color-text-muted); }
+
+.watchLast { white-space: nowrap; color: var(--color-text-muted); font-size: 0.82rem; }
+
+.watchActions {
+  display: flex;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  transition: background 0.12s, color 0.12s;
+}
+.iconBtn:hover { background: var(--color-surface-alt); color: var(--color-text); }
+.iconBtnDanger:hover { background: #fee2e2; color: #dc2626; }
+
+.watchForm {
+  border-top: 1px solid var(--color-border);
+  padding-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.watchFormLabel {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.watchFormRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.watchInput { width: 160px; }
+.watchInputUrl { flex: 1; min-width: 200px; }
+.watchInputDays { width: 70px; }

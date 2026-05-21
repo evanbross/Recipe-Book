@@ -9,7 +9,21 @@
       "Bash(netstat -ano)",
       "Bash(uv sync *)",
       "Bash(Get-ChildItem -Path \"F:\\\\Evan-F\\\\Projects\" -Directory)",
-      "Bash(Select-Object Name)"
+      "Bash(Select-Object Name)",
+      "Bash(.venv/Scripts/python -m alembic revision --autogenerate -m \"initial schema\")",
+      "Bash(.venv/Scripts/python -m alembic upgrade head)",
+      "Bash(Get-ChildItem -Path \"F:\\\\Evan-F\\\\Projects\\\\Recipe App\" -Force)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "Bash(npm run *)",
+      "Bash(.venv/Scripts/python -c \"from app.services import tagger; from app.routes import tags; print\\('imports OK'\\)\")",
+      "Bash(Get-ChildItem *)",
+      "Bash(.venv/Scripts/python.exe -m alembic current)",
+      "Bash(.venv/Scripts/python.exe -m alembic upgrade head)",
+      "Bash(python -c \"import sys; print\\(sys.version\\)\")",
+      "Bash(uv run *)",
+      "Bash(findstr :5173)",
+      "Bash(docker exec dev_caddy *)",
+      "Bash(PYTHONPATH=. uv run pytest tests/test_capture.py -v)"
     ]
   }
 }

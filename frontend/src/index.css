@@ -52,6 +52,7 @@ img { display: block; max-width: 100%; }
 .btn {
   display: inline-flex;
   align-items: center;
+  align-self: flex-start;
   gap: 0.4rem;
   padding: 0.55rem 1.2rem;
   border-radius: var(--radius);

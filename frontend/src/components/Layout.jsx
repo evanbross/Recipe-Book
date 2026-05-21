@@ -1,6 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
-import { Search, Plus, BookOpen } from 'lucide-react'
+import { Search, Plus, BookOpen, Settings } from 'lucide-react'
+import WatchlistAlert from './WatchlistAlert'
 import styles from './Layout.module.css'
 
 export default function Layout() {
@@ -36,8 +37,13 @@ export default function Layout() {
           <NavLink to="/add" className={`btn btn-primary ${styles.addBtn}`}>
             <Plus size={16} /> Add Recipe
           </NavLink>
+          <NavLink to="/settings" className={styles.settingsLink} title="Settings">
+            <Settings size={19} />
+          </NavLink>
         </nav>
       </header>
+
+      <WatchlistAlert />
 
       <main className={styles.main}>
         <Outlet />

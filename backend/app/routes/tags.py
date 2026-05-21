@@ -1,8 +1,14 @@
+import logging
 from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+
 from app.database import get_db
 from app import models, schemas
+from app.services import tagger as tagger_svc
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tags", tags=["tags"])
 
@@ -36,6 +42,26 @@ def create_tag(payload: schemas.TagCreate, db: Session = Depends(get_db)) -> sch
     db.commit()
     db.refresh(tag)
     return tag
+
+
+@router.post("/suggest", response_model=schemas.TagSuggestResponse)
+def suggest_tags(
+    payload: schemas.TagSuggestRequest,
+    db: Session = Depends(get_db),
+) -> schemas.TagSuggestResponse:
+    existing_tags = db.query(models.Tag).all()
+    categories = db.query(models.TagCategory).all()
+    try:
+        return tagger_svc.suggest_tags(
+            payload.title,
+            payload.description,
+            payload.ingredients,
+            existing_tags,
+            categories,
+        )
+    except Exception as exc:
+        logger.warning("Tag suggestion failed, returning empty result: %s", exc)
+        return schemas.TagSuggestResponse(existing_tag_ids=[], new_tags=[])
 
 
 @router.delete("/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)

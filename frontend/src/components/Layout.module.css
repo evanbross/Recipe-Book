@@ -73,4 +73,15 @@
 
 .addBtn { font-size: 0.875rem !important; }
 
+.settingsLink {
+  display: flex;
+  align-items: center;
+  padding: 0.35rem;
+  border-radius: var(--radius);
+  color: var(--color-text-muted);
+  transition: color 0.18s, background 0.18s;
+}
+.settingsLink:hover { color: var(--color-accent); background: var(--color-surface-alt); }
+.settingsLink.active { color: var(--color-accent); }
+
 .main { flex: 1; }

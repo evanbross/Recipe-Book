@@ -106,3 +106,144 @@
   font-size: 1.1rem;
   margin-bottom: 1rem;
 }
+
+/* ── Bulk import tab ─────────────────────────────────────────────────────── */
+
+.scanModeToggle {
+  display: flex;
+  gap: 0.25rem;
+  background: var(--color-surface-alt);
+  border-radius: var(--radius);
+  padding: 0.2rem;
+  border: 1px solid var(--color-border);
+  align-self: flex-start;
+}
+
+.scanModeBtn {
+  padding: 0.35rem 0.9rem;
+  border-radius: 5px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  transition: background 0.15s, color 0.15s;
+}
+.scanModeBtn:hover { color: var(--color-text); }
+.scanModeBtnActive {
+  background: var(--color-surface);
+  color: var(--color-accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.linkList {
+  max-height: 380px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-alt);
+}
+
+.linkListHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--color-surface);
+  border-radius: var(--radius) var(--radius) 0 0;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.linkItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.linkItem:last-child { border-bottom: none; }
+.linkItem:hover { background: var(--color-surface); }
+
+.linkItemDim { opacity: 0.45; }
+
+.linkMeta { flex: 1; min-width: 0; }
+
+.linkTitle {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.linkUrl {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 0.1rem;
+}
+
+.externalBadge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.scanActions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.progressWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.progressBar {
+  height: 6px;
+  background: var(--color-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.progressLabel {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.errorList {
+  font-size: 0.78rem;
+  color: var(--color-error, #f85149);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  max-height: 80px;
+  overflow-y: auto;
+}
