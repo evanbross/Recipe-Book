@@ -3,9 +3,12 @@ Scraper service: fetches a web page and extracts readable text content
 to pass to the Claude vision service for recipe extraction.
 """
 import json as _json
+import logging
 import httpx
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 from urllib.parse import urljoin, urlparse
+
+logger = logging.getLogger(__name__)
 
 
 _HEADERS = {
@@ -66,7 +69,7 @@ def extract_jsonld_recipe(soup: BeautifulSoup) -> dict | None:
     return None
 
 
-def _find_recipe_element(soup: BeautifulSoup):
+def _find_recipe_element(soup: BeautifulSoup) -> Tag | None:
     """Return the most specific recipe card element available, or None."""
     # schema.org microdata attribute — works across plugin boundaries
     elem = soup.find(attrs={"itemtype": "https://schema.org/Recipe"})
@@ -76,6 +79,91 @@ def _find_recipe_element(soup: BeautifulSoup):
         elem = soup.find(class_=lambda c: c and cls in c.split())
         if elem:
             return elem
+    return None
+
+
+# Common content container IDs used across many WordPress / CMS themes.
+_CONTENT_IDS: tuple[str, ...] = (
+    "content",
+    "main-content",
+    "primary-content",
+    "page-content",
+    "main",
+)
+
+
+def _find_main_content(soup: BeautifulSoup) -> Tag | None:
+    """
+    Return the element that most likely contains the page's primary content.
+
+    Tries recipe-specific containers first, then semantic <main>, then common
+    content IDs. If the page has multiple <article> elements (e.g. related-
+    recipe widgets), prefers the one that contains the <h1> title or the
+    largest article by text volume.
+    """
+    # 1. Recipe plugin containers
+    elem = _find_recipe_element(soup)
+    if elem:
+        return elem
+
+    # 2. Semantic main
+    elem = soup.find("main")
+    if elem:
+        return elem
+
+    # 3. Common content container IDs
+    for cid in _CONTENT_IDS:
+        elem = soup.find(id=cid)
+        if elem:
+            return elem
+
+    # 4. <article> elements — handle pages with multiple articles
+    articles = soup.find_all("article")
+    if len(articles) == 1:
+        return articles[0]
+    if len(articles) > 1:
+        h1 = soup.find("h1")
+        if h1:
+            # Prefer the article that actually contains the page heading
+            for article in articles:
+                if h1 in article.descendants:
+                    return article
+            for parent in h1.parents:
+                if parent.name == "article":
+                    return parent
+        # Fallback: the article with the most text is probably the main content
+        return max(articles, key=lambda a: len(a.get_text(separator="\n", strip=True)))
+
+    return None
+
+
+def extract_jsonld_image_url(jsonld: dict) -> str | None:
+    """Extract the best image URL from a JSON-LD Recipe dict.
+
+    Handles string, list, and ImageObject dict forms for ``image`` and
+    ``thumbnailUrl`` properties.
+    """
+    if not jsonld:
+        return None
+    for key in ("image", "thumbnailUrl"):
+        value = jsonld.get(key)
+        if not value:
+            continue
+        if isinstance(value, str):
+            return value
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, str):
+                    return item
+                if isinstance(item, dict):
+                    url = item.get("url") or item.get("contentUrl")
+                    if isinstance(url, str):
+                        return url
+            continue
+        if isinstance(value, dict):
+            url = value.get("url") or value.get("contentUrl")
+            if isinstance(url, str):
+                return url
     return None
 
 
@@ -89,11 +177,17 @@ def fetch_page(url: str, timeout: int = 15) -> tuple[str, str | None, str, dict 
 
     final_url is the URL after following all redirects — differs from url when
     the original link is a tracking redirect (e.g. ActiveCampaign lt.php).
-    The OG image URL is extracted from og:image / twitter:image meta tags.
+    The OG image URL is extracted from og:image / twitter:image meta tags and
+    resolved to an absolute URL.
     """
+    logger.info("[scraper] Fetching page: %s", url)
     with httpx.Client(headers=_HEADERS, follow_redirects=True, timeout=timeout) as client:
         response = client.get(url)
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError:
+            logger.warning("[scraper] HTTP %s for %s", response.status_code, url)
+            raise
     final_url = str(response.url)
 
     soup = BeautifulSoup(response.text, "html.parser")
@@ -102,6 +196,8 @@ def fetch_page(url: str, timeout: int = 15) -> tuple[str, str | None, str, dict 
     og_tag = soup.find("meta", attrs={"property": "og:image"}) or \
              soup.find("meta", attrs={"name": "twitter:image"})
     og_image_url: str | None = og_tag.get("content") if og_tag else None
+    if og_image_url:
+        og_image_url = urljoin(final_url, og_image_url)
     jsonld_recipe = extract_jsonld_recipe(soup)
 
     # Remove noise elements
@@ -111,9 +207,7 @@ def fetch_page(url: str, timeout: int = 15) -> tuple[str, str | None, str, dict 
     # Prefer a specific recipe card container so that long blog-post intros
     # don't crowd out the actual recipe content before the character limit.
     main = (
-        _find_recipe_element(soup)
-        or soup.find("main")
-        or soup.find("article")
+        _find_main_content(soup)
         or soup.find(class_=lambda c: c and "recipe" in c.lower())
         or soup.find("body")
     )
@@ -132,9 +226,14 @@ def fetch_page_text(url: str, timeout: int = 15) -> str:
 
 def fetch_page_html(url: str, timeout: int = 15) -> tuple[str, str]:
     """Fetch a web page and return (raw_html, final_url). Used for link extraction."""
+    logger.info("[scraper] Fetching HTML: %s", url)
     with httpx.Client(headers=_HEADERS, follow_redirects=True, timeout=timeout) as client:
         response = client.get(url)
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError:
+            logger.warning("[scraper] HTTP %s for %s", response.status_code, url)
+            raise
     return response.text, str(response.url)
 
 
@@ -184,9 +283,15 @@ def fetch_page_image(url: str, timeout: int = 15) -> tuple[bytes, str]:
     Download an image URL directly. Returns (bytes, media_type).
     Used when the user provides a direct image URL rather than a page URL.
     """
+    logger.info("[scraper] Fetching image: %s", url)
     with httpx.Client(headers=_HEADERS, follow_redirects=True, timeout=timeout) as client:
         response = client.get(url)
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError:
+            logger.warning("[scraper] HTTP %s for image %s", response.status_code, url)
+            raise
 
     content_type = response.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+    logger.info("[scraper] Image downloaded: %s (%s, %d bytes)", url, content_type, len(response.content))
     return response.content, content_type

@@ -213,37 +213,188 @@
   flex-wrap: wrap;
 }
 
-.progressWrap {
+
+/* ── Bulk capture progress modal ─────────────────────────────────────────── */
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 200;
   display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
 }
 
-.progressBar {
-  height: 6px;
-  background: var(--color-border);
-  border-radius: 3px;
+.captureDialog {
+  background: var(--color-surface, #fff);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+}
+
+.captureDialogHeader {
+  padding: 1.1rem 1.5rem 0.8rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.captureDialogHeader h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.captureProgressWrap {
+  padding: 1rem 1.5rem 0.25rem;
+}
+
+.captureProgress {
+  position: relative;
+  height: 22px;
+  background: var(--color-surface-alt);
+  border-radius: 4px;
   overflow: hidden;
 }
 
-.progressFill {
+.captureProgressBar {
+  position: absolute;
+  top: 0;
+  left: 0;
   height: 100%;
   background: var(--color-accent);
-  border-radius: 3px;
-  transition: width 0.3s ease;
+  transition: width 0.5s ease;
 }
 
-.progressLabel {
+.captureProgressPct {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.captureProgressCount {
+  margin: 0.35rem 0 0;
   font-size: 0.8rem;
   color: var(--color-text-muted);
+  text-align: center;
 }
 
-.errorList {
-  font-size: 0.78rem;
-  color: var(--color-error, #f85149);
+.captureCurrentRecipe {
+  margin: 0.2rem 0 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.captureStats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.6rem;
+  padding: 0.9rem 1.5rem;
+}
+
+.statCard {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
-  max-height: 80px;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.6rem 0.25rem;
+  background: var(--color-surface-alt);
+  border-radius: 8px;
+}
+
+.statValue {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1;
+}
+
+.statLabel {
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  line-height: 1.3;
+}
+
+.captureErrorList {
+  padding: 0 1.5rem 0.75rem;
+  max-height: 120px;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.captureErrorItem {
+  font-size: 0.78rem;
+  color: var(--color-error, #f85149);
+}
+
+.captureDialogFooter {
+  padding: 0.75rem 1.5rem 1.1rem;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ── Bulk capture recipe table ───────────────────────────────────────────── */
+
+.captureTableWrap {
+  padding: 0 1.5rem 0.75rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.captureTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.captureTable th,
+.captureTable td {
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.captureTable th {
+  font-weight: 600;
+  color: var(--color-text-muted);
+  background: var(--color-surface-alt);
+  position: sticky;
+  top: 0;
+}
+
+.captureTable td:first-child {
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cellYes {
+  color: #22c55e;
+  text-align: center;
+}
+
+.cellNo {
+  color: var(--color-error, #f85149);
+  text-align: center;
 }

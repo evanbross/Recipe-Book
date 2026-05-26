@@ -32,17 +32,25 @@
 # --- END AI SYSTEMS DIRECTIVE ---
 # =============================================================================
 
+"""
+GUI launcher — starts main.py as a subprocess and displays status in a small
+Tkinter window.  All service management (port allocation, Caddy registration,
+npm, uvicorn) lives in main.py; this file just shows progress and provides
+Open Browser / Restart / Stop buttons.
+
+main.py writes subprocess output to server.log and emits control lines to
+stdout that this window reads:
+  [STATUS] <message>   — progress updates shown in the status label
+  [LOG] <path>         — where server.log was created
+  [READY] url=<url>    — app is up; enables the Open Browser button
+  [main] ERROR: <msg>  — fatal startup error
+"""
 from __future__ import annotations
 
-import json
-import queue
 import re
-import shutil
-import socket
 import subprocess
 import sys
 import threading
-import time
 import tkinter as tk
 import urllib.error
 import urllib.request
@@ -50,14 +58,8 @@ import webbrowser
 from pathlib import Path
 from tkinter import font as tkfont, messagebox, ttk
 
-
 _HERE = Path(__file__).resolve().parent
 _BACKEND_DIR = _HERE / "backend"
-_FRONTEND_DIR = _HERE / "frontend"
-
-# Matches the "Local: http://localhost:PORT/" line that Vite prints on startup.
-_ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
-_VITE_PORT_RE = re.compile(r'http://localhost:(\d+)/')
 
 _BG = "#1f2328"
 _FG = "#e6edf3"
@@ -68,7 +70,6 @@ _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 
 def _parse_env() -> dict[str, str]:
-    """Return key=value pairs from the backend .env file, ignoring comments."""
     env_file = _BACKEND_DIR / ".env"
     result: dict[str, str] = {}
     if not env_file.exists():
@@ -82,79 +83,21 @@ def _parse_env() -> dict[str, str]:
 
 
 _ENV = _parse_env()
-# Backend port: used both for starting uvicorn and for Caddy's upstream dial address.
-_BACKEND_PORT = int(_ENV.get("CADDY_API_PORT", "8000"))
 _CADDY_ADMIN_URL = _ENV.get("CADDY_ADMIN_URL", "http://localhost:2019")
 _CADDY_APP_NAME = _ENV.get("CADDY_APP_NAME", "recipe-app")
 
 
-def _uv() -> str:
-    found = shutil.which("uv")
-    if not found:
-        raise RuntimeError("uv not found on PATH — is uv installed?")
-    return found
+def _python() -> str:
+    """Return the venv Python path, falling back to sys.executable."""
+    scripts = "Scripts" if sys.platform == "win32" else "bin"
+    exe = "python.exe" if sys.platform == "win32" else "python"
+    venv_python = _BACKEND_DIR / ".venv" / scripts / exe
+    return str(venv_python) if venv_python.exists() else sys.executable
 
 
-def _npm() -> str:
-    found = shutil.which("npm")
-    if not found:
-        raise RuntimeError("npm not found on PATH — is Node.js installed?")
-    return found
-
-
-def _wait_for_port(port: int, timeout: int = 60) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            with socket.create_connection(("127.0.0.1", port), timeout=1):
-                return True
-        except OSError:
-            time.sleep(0.5)
-    return False
-
-
-def _needs_npm_install() -> bool:
-    pkg = _FRONTEND_DIR / "package.json"
-    modules = _FRONTEND_DIR / "node_modules"
-    if not modules.exists():
-        return True
-    return pkg.stat().st_mtime > modules.stat().st_mtime
-
-
-# ── Caddy helpers ─────────────────────────────────────────────────────────────
-
-def _caddy_register(api_port: int, frontend_port: int) -> None:
-    """Register /api/* and /* routes for this app. Idempotent; silent if Caddy is down."""
-    _caddy_delete_route(f"app-{_CADDY_APP_NAME}-api")
-    _caddy_delete_route(f"app-{_CADDY_APP_NAME}-frontend")
-    for route in [
-        {
-            "@id": f"app-{_CADDY_APP_NAME}-api",
-            "match": [{"host": [f"{_CADDY_APP_NAME}.localhost"], "path": ["/api", "/api/*"]}],
-            "handle": [
-                {"handler": "rewrite", "strip_path_prefix": "/api"},
-                {"handler": "reverse_proxy", "upstreams": [{"dial": f"host.docker.internal:{api_port}"}]},
-            ],
-        },
-        {
-            "@id": f"app-{_CADDY_APP_NAME}-frontend",
-            "match": [{"host": [f"{_CADDY_APP_NAME}.localhost"]}],
-            "handle": [
-                {"handler": "reverse_proxy", "upstreams": [{"dial": f"host.docker.internal:{frontend_port}"}]},
-            ],
-        },
-    ]:
-        try:
-            req = urllib.request.Request(
-                f"{_CADDY_ADMIN_URL}/config/apps/http/servers/dev/routes",
-                data=json.dumps(route).encode(),
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            urllib.request.urlopen(req, timeout=3)
-        except (urllib.error.URLError, OSError):
-            return
-
+# ── Caddy safety deregister ───────────────────────────────────────────────────
+# main.py deregisters on clean shutdown, but a force-kill skips that.  These
+# helpers let the launcher deregister anyway when Stop is clicked.
 
 def _caddy_deregister() -> None:
     for suffix in ("api", "frontend"):
@@ -174,11 +117,8 @@ def _caddy_delete_route(route_id: str) -> None:
 class LauncherWindow:
     def __init__(self, root: tk.Tk) -> None:
         self._root = root
-        self._backend: subprocess.Popen | None = None
-        self._frontend: subprocess.Popen | None = None
-        self._log = None
-        self._vite_port: int | None = None
-        self._vite_port_queue: queue.Queue[int] = queue.Queue()
+        self._main: subprocess.Popen | None = None
+        self._url: str | None = None
 
         self._configure_styles()
         self._build_ui()
@@ -207,7 +147,7 @@ class LauncherWindow:
         tk.Label(self._root, textvariable=self._status, font=status_font,
                  fg=_FG, bg=_BG, width=48, anchor="w").pack(fill="x", padx=20)
 
-        self._hint = tk.StringVar(value="Server output is written to server.log.")
+        self._hint = tk.StringVar(value="Starting...")
         tk.Label(self._root, textvariable=self._hint,
                  font=("Segoe UI", 8), fg=_MUTED, bg=_BG,
                  width=58, anchor="w").pack(fill="x", padx=20, pady=(4, 0))
@@ -236,31 +176,42 @@ class LauncherWindow:
         threading.Thread(target=self._start, daemon=True).start()
 
     def _start(self) -> None:
-        log_path = _HERE / "server.log"
-        self._log = log_path.open("w", encoding="utf-8")
-        self._vite_port_queue = queue.Queue()
+        ready_seen = False
         try:
-            self._ensure_frontend_deps(self._log)
-            self._launch_backend(self._log)
-            self._launch_frontend()
+            self._main = subprocess.Popen(
+                [_python(), str(_HERE / "main.py")],
+                cwd=str(_HERE),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                creationflags=_NO_WINDOW,
+            )
 
-            self._set_status("Waiting for backend...")
-            if not _wait_for_port(_BACKEND_PORT):
-                self._set_status("Backend did not start. Check server.log.")
-                return
+            assert self._main.stdout
+            for raw in iter(self._main.stdout.readline, b""):
+                stripped = raw.decode("utf-8", errors="replace").strip()
 
-            self._set_status("Waiting for frontend...")
-            try:
-                vite_port = self._vite_port_queue.get(timeout=60)
-            except queue.Empty:
-                self._set_status("Frontend did not start (port not detected). Check server.log.")
-                return
+                m = re.match(r'\[STATUS\] (.+)', stripped)
+                if m:
+                    self._set_status(m.group(1))
+                    continue
 
-            self._vite_port = vite_port
-            _caddy_register(_BACKEND_PORT, vite_port)
+                m = re.match(r'\[LOG\] (.+)', stripped)
+                if m:
+                    self._set_hint(f"Logs: {m.group(1).strip()}")
+                    continue
 
-            url = f"http://{_CADDY_APP_NAME}.localhost"
-            self._root.after(0, lambda: self._on_ready(url))
+                m = re.match(r'\[READY\] url=(\S+)', stripped)
+                if m and not ready_seen:
+                    ready_seen = True
+                    url = m.group(1)
+                    self._root.after(0, lambda u=url: self._on_ready(u))
+                    continue
+
+                if re.match(r'\[main\] ERROR:', stripped):
+                    self._set_status(stripped[len("[main] ERROR: "):])
+
+            if not ready_seen:
+                self._set_status("Stopped — check server.log.")
 
         except Exception as exc:
             self._set_status("Startup failed.")
@@ -268,59 +219,8 @@ class LauncherWindow:
                 0, lambda: messagebox.showerror("Startup Failed", str(exc), parent=self._root)
             )
 
-    def _ensure_frontend_deps(self, log) -> None:
-        if not _needs_npm_install():
-            return
-        self._set_status("Installing frontend dependencies...")
-        result = subprocess.run(
-            [_npm(), "install"],
-            cwd=str(_FRONTEND_DIR),
-            stdout=log,
-            stderr=log,
-            creationflags=_NO_WINDOW,
-        )
-        if result.returncode != 0:
-            raise RuntimeError("npm install failed — check server.log for details.")
-
-    def _launch_backend(self, log) -> None:
-        self._set_status("Starting backend...")
-        self._backend = subprocess.Popen(
-            [_uv(), "run", "uvicorn", "app.main:app",
-             "--reload", "--reload-dir", "app",
-             "--host", "0.0.0.0", "--port", str(_BACKEND_PORT)],
-            cwd=str(_BACKEND_DIR),
-            stdout=log,
-            stderr=log,
-            creationflags=_NO_WINDOW,
-        )
-
-    def _launch_frontend(self) -> None:
-        self._set_status("Starting frontend...")
-        self._frontend = subprocess.Popen(
-            [_npm(), "run", "dev"],
-            cwd=str(_FRONTEND_DIR),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            creationflags=_NO_WINDOW,
-        )
-        threading.Thread(target=self._stream_frontend_output, daemon=True).start()
-
-    def _stream_frontend_output(self) -> None:
-        """Read Vite's stdout, write to log, and detect the bound port."""
-        assert self._frontend and self._frontend.stdout
-        port_found = False
-        for raw in iter(self._frontend.stdout.readline, b""):
-            line = raw.decode("utf-8", errors="replace")
-            if self._log and not self._log.closed:
-                self._log.write(line)
-                self._log.flush()
-            if not port_found:
-                m = _VITE_PORT_RE.search(_ANSI_RE.sub('', line))
-                if m:
-                    self._vite_port_queue.put(int(m.group(1)))
-                    port_found = True
-
     def _on_ready(self, url: str) -> None:
+        self._url = url
         self._status.set(f"Running — {url}")
         self._open_btn.config(state="normal")
         self._restart_btn.config(state="normal")
@@ -328,13 +228,13 @@ class LauncherWindow:
     # ── actions ───────────────────────────────────────────────────────────────
 
     def _open_browser(self) -> None:
-        webbrowser.open(f"http://{_CADDY_APP_NAME}.localhost")
+        if self._url:
+            webbrowser.open(self._url)
 
     def _restart(self) -> None:
         self._open_btn.config(state="disabled")
         self._restart_btn.config(state="disabled")
         self._stop_processes()
-        self._vite_port = None
         self._set_status("Restarting...")
         self._start_thread()
 
@@ -344,27 +244,25 @@ class LauncherWindow:
 
     def _stop_processes(self) -> None:
         _caddy_deregister()
-        for proc in (self._frontend, self._backend):
-            if proc and proc.poll() is None:
-                if sys.platform == "win32":
-                    subprocess.run(
-                        ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                        capture_output=True, check=False,
-                    )
-                else:
-                    proc.terminate()
-                    try:
-                        proc.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        proc.kill()
-        self._frontend = None
-        self._backend = None
-        if self._log and not self._log.closed:
-            self._log.close()
-            self._log = None
+        if self._main and self._main.poll() is None:
+            if sys.platform == "win32":
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(self._main.pid)],
+                    capture_output=True, check=False,
+                )
+            else:
+                self._main.terminate()
+                try:
+                    self._main.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self._main.kill()
+        self._main = None
 
     def _set_status(self, message: str) -> None:
         self._root.after(0, lambda: self._status.set(message))
+
+    def _set_hint(self, message: str) -> None:
+        self._root.after(0, lambda: self._hint.set(message))
 
 
 def main() -> None:

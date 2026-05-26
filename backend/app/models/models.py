@@ -53,21 +53,21 @@ class Recipe(Base):
     __tablename__ = "recipes"
 
     id = Column(Integer, primary_key=True, index=True)
-    title = Column(String(255), nullable=False)
+    title = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
     ingredients = Column(Text, nullable=True)       # stored as plain text or JSON string
     instructions = Column(Text, nullable=True)
-    servings = Column(String(50), nullable=True)
-    prep_time = Column(String(50), nullable=True)
-    cook_time = Column(String(50), nullable=True)
-    source_url = Column(String(2048), nullable=True)    # original web URL if captured from web
-    source_type = Column(String(50), nullable=False, default="manual")  # web | image | manual
+    servings = Column(Text, nullable=True)
+    prep_time = Column(Text, nullable=True)
+    cook_time = Column(Text, nullable=True)
+    source_url = Column(Text, nullable=True)    # original web URL if captured from web
+    source_type = Column(Text, nullable=False, default="manual")  # web | image | manual
 
     # MinIO references
-    image_key = Column(String(512), nullable=True)
-    image_url = Column(String(2048), nullable=True)
-    thumbnail_key = Column(String(512), nullable=True)
-    thumbnail_url = Column(String(2048), nullable=True)
+    image_key = Column(Text, nullable=True)
+    image_url = Column(Text, nullable=True)
+    thumbnail_key = Column(Text, nullable=True)
+    thumbnail_url = Column(Text, nullable=True)
 
     # True while an email-sourced recipe is waiting for the user to pick an image
     image_pending = Column(Boolean, nullable=False, default=False)
@@ -110,13 +110,13 @@ class EmailRecipeCandidate(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     scanned_email_id = Column(Integer, ForeignKey("scanned_emails.id", ondelete="CASCADE"), nullable=False)
-    title = Column(String(255), nullable=False)
+    title = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
     ingredients = Column(Text, nullable=True)
     instructions = Column(Text, nullable=True)
-    servings = Column(String(50), nullable=True)
-    prep_time = Column(String(50), nullable=True)
-    cook_time = Column(String(50), nullable=True)
+    servings = Column(Text, nullable=True)
+    prep_time = Column(Text, nullable=True)
+    cook_time = Column(Text, nullable=True)
     source_sender = Column(String(255), nullable=True)
     source_subject = Column(String(500), nullable=True)
     recipe_id = Column(Integer, ForeignKey("recipes.id", ondelete="SET NULL"), nullable=True)

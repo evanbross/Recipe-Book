@@ -11,6 +11,7 @@ from app import models, schemas
 from app.routes import recipes, tags, capture, search, email_scan, watchlist
 from app.services import scraper as scraper_svc, vision as vision_svc
 from app.services import storage as storage_svc
+from app.services import sources as sources_svc
 from app.services.capture_listener import start_capture_listener
 from app.services.storage import check_connectivity as check_minio
 
@@ -42,8 +43,9 @@ def _listener_submit_capture(body: dict[str, Any]) -> tuple[dict[str, Any], int]
     db = SessionLocal()
     try:
         matched_tags = db.query(models.Tag).filter(models.Tag.id.in_(tag_ids)).all()
+        data = extracted.model_dump()
         recipe = models.Recipe(
-            **extracted.model_dump(),
+            **data,
             source_url=url,
             source_type="web",
         )

@@ -36,7 +36,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useDropzone } from 'react-dropzone'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { Globe, Camera, FileText, Upload, Mail, Link2 } from 'lucide-react'
+import { Globe, Camera, FileText, Upload, Mail, Link2, Check, X } from 'lucide-react'
 import { captureFromUrl, captureFromImage, createRecipe, updateRecipe, scanForLinks } from '../api/client'
 import TagCategorizeDialog from '../components/TagCategorizeDialog'
 import EmailScanTab from '../components/EmailScanTab'
@@ -123,6 +123,8 @@ export default function AddRecipe() {
   const [scannedLinks, setScannedLinks] = useState(null)
   const [selectedUrls, setSelectedUrls] = useState(new Set())
   const [captureProgress, setCaptureProgress] = useState(null)
+  const [captureAll, setCaptureAll] = useState(false)
+  const [captureLimit, setCaptureLimit] = useState(10)
 
   const scanMutation = useMutation({
     mutationFn: () => scanMode === 'url'
@@ -138,15 +140,42 @@ export default function AddRecipe() {
   const isLoading = urlMutation.isPending || imageMutation.isPending || manualMutation.isPending
 
   async function captureSelected() {
-    const urls = [...selectedUrls]
+    let urls = [...selectedUrls]
     if (!urls.length) return
-    setCaptureProgress({ total: urls.length, done: 0, errors: [] })
+    if (!captureAll) {
+      urls = urls.slice(0, captureLimit)
+    }
+    setCaptureProgress({ total: urls.length, done: 0, errors: [], found: 0, imagesCaptured: 0, currentTitle: '', currentUrl: '', recipes: [] })
     for (const url of urls) {
+      setCaptureProgress(p => p && ({ ...p, currentUrl: url, currentTitle: 'Capturing…' }))
       try {
-        await captureFromUrl({ url, tag_ids: [] })
+        const recipe = await captureFromUrl({ url, tag_ids: [] })
+        const hasImage = !!(recipe.image_url || recipe.image_key)
+        const hasIngredients = !!(recipe.ingredients && recipe.ingredients.trim().length > 0)
+        const hasBody = !!(recipe.instructions && recipe.instructions.trim().length > 0)
+        setCaptureProgress(p => p && ({
+          ...p,
+          found: p.found + 1,
+          imagesCaptured: p.imagesCaptured + (hasImage ? 1 : 0),
+          currentTitle: recipe.title || '(untitled)',
+          recipes: [
+            ...p.recipes,
+            {
+              title: recipe.title || '(untitled)',
+              hasImage,
+              hasIngredients,
+              hasBody,
+              url,
+            },
+          ],
+        }))
       } catch (e) {
-        const msg = e?.response?.data?.detail || url
-        setCaptureProgress(p => ({ ...p, errors: [...p.errors, msg] }))
+        const reason = e?.response?.data?.detail || e?.message || 'Unknown error'
+        setCaptureProgress(p => p && ({
+          ...p,
+          errors: [...p.errors, { url, reason }],
+          currentTitle: 'Error',
+        }))
       }
       setCaptureProgress(p => p && ({ ...p, done: p.done + 1 }))
     }
@@ -361,33 +390,42 @@ export default function AddRecipe() {
                 </div>
 
                 {captureProgress ? (
-                  <div className={styles.progressWrap}>
-                    <div className={styles.progressBar}>
-                      <div
-                        className={styles.progressFill}
-                        style={{ width: `${Math.round((captureProgress.done / captureProgress.total) * 100)}%` }}
-                      />
-                    </div>
-                    <span className={styles.progressLabel}>
-                      {captureProgress.done < captureProgress.total
-                        ? `Capturing ${captureProgress.done + 1} of ${captureProgress.total}…`
-                        : `Done — ${captureProgress.total - captureProgress.errors.length} captured`}
-                    </span>
-                    {captureProgress.errors.length > 0 && (
-                      <div className={styles.errorList}>
-                        {captureProgress.errors.map((e, i) => <span key={i}>{e}</span>)}
-                      </div>
-                    )}
+                  <div className={styles.scanActions}>
+                    <button className="btn btn-primary" disabled>Capturing…</button>
                   </div>
                 ) : (
                   <div className={styles.scanActions}>
-                    <button
-                      className="btn btn-primary"
-                      disabled={selectedUrls.size === 0}
-                      onClick={captureSelected}
-                    >
-                      Capture {selectedUrls.size} Recipe{selectedUrls.size !== 1 ? 's' : ''}
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                      <button
+                        className="btn btn-primary"
+                        disabled={selectedUrls.size === 0}
+                        onClick={captureSelected}
+                      >
+                        Capture {captureAll ? selectedUrls.size : Math.min(selectedUrls.size, captureLimit || 0)} Recipe{((captureAll ? selectedUrls.size : Math.min(selectedUrls.size, captureLimit || 0)) !== 1) ? 's' : ''}
+                      </button>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={captureAll}
+                          onChange={e => setCaptureAll(e.target.checked)}
+                        />
+                        Capture all
+                      </label>
+                      {!captureAll && (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem' }}>
+                          Limit:
+                          <input
+                            type="number"
+                            min={1}
+                            max={selectedUrls.size || 1}
+                            value={captureLimit}
+                            onChange={e => setCaptureLimit(Math.max(1, parseInt(e.target.value, 10) || 0))}
+                            style={{ width: '3.5rem', padding: '0.25rem 0.4rem', fontSize: '0.85rem' }}
+                            className="input"
+                          />
+                        </label>
+                      )}
+                    </div>
                     <span className={styles.hint}>{selectedUrls.size} of {scannedLinks.length} selected</span>
                   </div>
                 )}
@@ -440,6 +478,104 @@ export default function AddRecipe() {
           </div>
         )}
       </div>
+
+      {captureProgress && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.captureDialog}>
+            <div className={styles.captureDialogHeader}>
+              <h3>{captureProgress.done < captureProgress.total ? 'Bulk Capturing…' : 'Bulk Capture Complete'}</h3>
+            </div>
+
+            <div className={styles.captureProgressWrap}>
+              <div className={styles.captureProgress}>
+                <div
+                  className={styles.captureProgressBar}
+                  style={{ width: `${captureProgress.total > 0 ? Math.round((captureProgress.done / captureProgress.total) * 100) : 0}%` }}
+                />
+                <span className={styles.captureProgressPct}>
+                  {captureProgress.total > 0 ? `${Math.round((captureProgress.done / captureProgress.total) * 100)}%` : '0%'}
+                </span>
+              </div>
+              <p className={styles.captureProgressCount}>
+                {captureProgress.done} of {captureProgress.total} processed
+              </p>
+              {captureProgress.currentUrl && captureProgress.done < captureProgress.total && (
+                <p className={styles.captureCurrentRecipe} title={captureProgress.currentUrl}>
+                  {captureProgress.currentTitle || 'Capturing…'}
+                </p>
+              )}
+            </div>
+
+            <div className={styles.captureStats}>
+              <div className={styles.statCard}>
+                <span className={styles.statValue}>{captureProgress.found}</span>
+                <span className={styles.statLabel}>Recipes found</span>
+              </div>
+              <div className={styles.statCard}>
+                <span className={styles.statValue}>{captureProgress.errors.length}</span>
+                <span className={styles.statLabel}>Errors</span>
+              </div>
+              <div className={styles.statCard}>
+                <span className={styles.statValue}>{captureProgress.imagesCaptured}</span>
+                <span className={styles.statLabel}>Images captured</span>
+              </div>
+              <div className={styles.statCard}>
+                <span className={styles.statValue}>{captureProgress.done}</span>
+                <span className={styles.statLabel}>Processed</span>
+              </div>
+            </div>
+
+            {captureProgress.recipes.length > 0 && (
+              <div className={styles.captureTableWrap}>
+                <table className={styles.captureTable}>
+                  <thead>
+                    <tr>
+                      <th>Recipe</th>
+                      <th>Image</th>
+                      <th>Ingredients</th>
+                      <th>Body</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {captureProgress.recipes.map((r, i) => (
+                      <tr key={i}>
+                        <td title={r.url}>{r.title}</td>
+                        <td className={r.hasImage ? styles.cellYes : styles.cellNo}>
+                          {r.hasImage ? <Check size={14} /> : <X size={14} />}
+                        </td>
+                        <td className={r.hasIngredients ? styles.cellYes : styles.cellNo}>
+                          {r.hasIngredients ? <Check size={14} /> : <X size={14} />}
+                        </td>
+                        <td className={r.hasBody ? styles.cellYes : styles.cellNo}>
+                          {r.hasBody ? <Check size={14} /> : <X size={14} />}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {captureProgress.errors.length > 0 && (
+              <div className={styles.captureErrorList}>
+                {captureProgress.errors.map(({ url: errUrl, reason }, i) => (
+                  <div key={i} className={styles.captureErrorItem}>
+                    <strong>{errUrl}</strong> — {reason}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {captureProgress.done >= captureProgress.total && (
+              <div className={styles.captureDialogFooter}>
+                <button className="btn btn-primary" onClick={() => setCaptureProgress(null)}>
+                  Done
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {pendingRecipe && (
         <TagCategorizeDialog

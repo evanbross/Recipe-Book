@@ -80,8 +80,8 @@ CAPTURE_LISTENER_ENABLED=true
 CAPTURE_LISTENER_HOST=127.0.0.1
 CAPTURE_LISTENER_PORT=8001
 
-# Caddy reverse proxy — used by the launcher to register http://<CADDY_APP_NAME>.localhost
-# /api/* → CADDY_API_PORT (FastAPI), /* → Vite dev server (port detected dynamically)
+# Caddy reverse proxy — used by main.py to register http://<CADDY_APP_NAME>.localhost
+# /api/* → a free port chosen at startup (FastAPI), /* → a free port chosen at startup (Vite)
 CADDY_ADMIN_URL=http://localhost:2019
 CADDY_APP_NAME=recipe-app
 CADDY_API_PORT=8088

@@ -81,6 +81,21 @@ def _object_url(key: str) -> str:
     return f"{settings.minio_public_url}/{key}"
 
 
+def _sanitize_metadata(meta: dict[str, str]) -> dict[str, str]:
+    """
+    Strip non-ASCII characters from S3 metadata keys and values.
+    S3 object metadata must be valid ISO-8859-1 or ASCII depending on the
+    SDK version; removing non-ASCII avoids ParamValidationError.
+    """
+    cleaned: dict[str, str] = {}
+    for key, value in meta.items():
+        safe_key = key.encode("ascii", "ignore").decode("ascii")
+        safe_value = str(value).encode("ascii", "ignore").decode("ascii")
+        if safe_key:
+            cleaned[safe_key] = safe_value
+    return cleaned
+
+
 def upload_image(
     image_bytes: bytes,
     media_type: str = "image/jpeg",
@@ -101,6 +116,7 @@ def upload_image(
     if metadata:
         merged_metadata.update(metadata)
     merged_metadata["object-group-id"] = uid
+    merged_metadata = _sanitize_metadata(merged_metadata)
 
     # Upload original
     image_key = f"{folder}/{uid}.{ext}"

@@ -4,12 +4,14 @@ from images (photos, scans) or raw web page text.
 """
 import base64
 import json
+import logging
 import re
 from typing import Optional
 import anthropic
 from app.config import settings
 from app.schemas import CaptureResult
 
+logger = logging.getLogger(__name__)
 client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
 EXTRACTION_PROMPT = """
@@ -87,6 +89,7 @@ def extract_from_jsonld(recipe_data: dict) -> CaptureResult:
     Build a CaptureResult directly from a JSON-LD Recipe dict.
     No Claude API call — the structured data is already authoritative.
     """
+    logger.info("[vision] Extracting from JSON-LD: %s", recipe_data.get("name", "unknown"))
     return CaptureResult(
         title=recipe_data.get("name") or "Untitled Recipe",
         description=recipe_data.get("description"),
@@ -111,48 +114,72 @@ def extract_from_image_bytes(image_bytes: bytes, media_type: str = "image/jpeg")
     Extract recipe from an uploaded image (photo or scan).
     Sends the image directly to Claude vision.
     """
+    logger.info("[vision] Calling Claude vision for image (%s, %d bytes)", media_type, len(image_bytes))
     b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
 
-    response = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=2048,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": b64,
+    try:
+        response = client.messages.create(
+            model="claude-opus-4-5",
+            max_tokens=2048,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": b64,
+                            },
                         },
-                    },
-                    {
-                        "type": "text",
-                        "text": EXTRACTION_PROMPT,
-                    },
-                ],
-            }
-        ],
-    )
+                        {
+                            "type": "text",
+                            "text": EXTRACTION_PROMPT,
+                        },
+                    ],
+                }
+            ],
+        )
+    except Exception as exc:
+        logger.error("[vision] Claude vision API failed: %s", exc)
+        raise
 
-    return _parse_claude_response(response.content[0].text)
+    try:
+        result = _parse_claude_response(response.content[0].text)
+    except Exception as exc:
+        logger.error("[vision] Failed to parse Claude response: %s", exc)
+        raise
+
+    logger.info("[vision] Claude vision extraction successful: %s", result.title)
+    return result
 
 
 def extract_from_text(page_text: str) -> CaptureResult:
     """
     Extract recipe from raw text (scraped web page content).
     """
-    response = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=2048,
-        messages=[
-            {
-                "role": "user",
-                "content": f"{EXTRACTION_PROMPT}\n\nContent to extract from:\n\n{page_text[:8000]}",
-            }
-        ],
-    )
+    logger.info("[vision] Calling Claude text extraction (%d chars)", len(page_text))
+    try:
+        response = client.messages.create(
+            model="claude-opus-4-5",
+            max_tokens=2048,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"{EXTRACTION_PROMPT}\n\nContent to extract from:\n\n{page_text[:8000]}",
+                }
+            ],
+        )
+    except Exception as exc:
+        logger.error("[vision] Claude text extraction API failed: %s", exc)
+        raise
 
-    return _parse_claude_response(response.content[0].text)
+    try:
+        result = _parse_claude_response(response.content[0].text)
+    except Exception as exc:
+        logger.error("[vision] Failed to parse Claude response: %s", exc)
+        raise
+
+    logger.info("[vision] Claude text extraction successful: %s", result.title)
+    return result
