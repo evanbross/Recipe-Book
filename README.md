@@ -1,93 +1,224 @@
-# Recipe Book
+# Recipe Organizer
 
+Capture and organize recipes from web pages, photos, and scans. Powered by Claude vision AI.
 
+## Stack
 
-## Getting started
+| Layer | Technology |
+|---|---|
+| Frontend | React 18 + Vite |
+| Backend | Python 3.12 + FastAPI |
+| Database | PostgreSQL 16 |
+| Image Storage | Cloudflare R2 |
+| AI Extraction | Anthropic Claude API |
+| ORM | SQLAlchemy 2 + Alembic |
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+---
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+## Quick Start (Docker)
 
-## Add your files
+### 1. Clone and configure
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+```bash
+cd backend
+cp .env.example .env
+# Edit .env with your real keys (see Configuration below)
+```
+
+### 2. Start everything
+
+```bash
+docker-compose up --build
+```
+
+- Frontend: http://localhost:5173  
+- Backend API: http://localhost:8000  
+- API docs: http://localhost:8000/docs
+
+---
+
+## Local Development (without Docker)
+
+### PostgreSQL
+
+Install PostgreSQL and create the database:
+
+```sql
+CREATE USER recipe_user WITH PASSWORD 'recipe_pass';
+CREATE DATABASE recipe_db OWNER recipe_user;
+```
+
+### Backend
+
+```bash
+cd backend
+python -m venv .venv
+.venv\Scripts\activate        # Windows
+# source .venv/bin/activate   # macOS/Linux
+
+pip install -r requirements.txt
+cp .env.example .env          # fill in your keys
+
+uvicorn app.main:app --reload
+```
+
+Tables are created automatically on first run via `Base.metadata.create_all()`.
+
+For production migrations use Alembic:
+
+```bash
+alembic revision --autogenerate -m "initial"
+alembic upgrade head
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+---
+
+## Configuration
+
+Edit `backend/.env`:
+
+```env
+# PostgreSQL connection
+DATABASE_URL=postgresql://recipe_user:recipe_pass@localhost:5432/recipe_db
+
+# Get from https://console.anthropic.com
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Cloudflare R2 — see setup below
+R2_ACCOUNT_ID=...
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
+R2_BUCKET_NAME=recipe-images
+R2_PUBLIC_URL=https://your-bucket.your-account.r2.dev
+
+# Any random string for JWT signing
+SECRET_KEY=change-me
+
+# Comma-separated allowed origins for CORS
+CORS_ORIGINS=http://localhost:5173
+```
+
+---
+
+## Cloudflare R2 Setup
+
+1. Log in to [dash.cloudflare.com](https://dash.cloudflare.com) → **R2**
+2. Create a bucket named `recipe-images`
+3. Enable **Public Access** on the bucket (or use a custom domain)
+4. Go to **R2 → Manage R2 API tokens** → Create token with Object Read & Write
+5. Copy `Account ID`, `Access Key ID`, `Secret Access Key` into `.env`
+6. Set `R2_PUBLIC_URL` to the bucket's public URL shown in the dashboard
+
+---
+
+## API Reference
+
+Full interactive docs at http://localhost:8000/docs when running.
+
+### Key endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| GET | /recipes | List all recipes |
+| GET | /recipes/{id} | Get single recipe |
+| POST | /recipes | Create manually |
+| PATCH | /recipes/{id} | Update recipe |
+| DELETE | /recipes/{id} | Delete recipe |
+| POST | /capture/url | Capture from web URL |
+| POST | /capture/image | Extract from image/scan |
+| GET | /tags | List all tags |
+| GET | /tags/categories | List tag categories |
+| POST | /tags | Create tag |
+| POST | /tags/categories | Create tag category |
+| GET | /search | Search + filter by tags |
+
+### Search examples
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/EvanRoss/recipe-book.git
-git branch -M main
-git push -uf origin main
+GET /search?q=ramen
+GET /search?tags=asian,soup
+GET /search?q=bread&tags=italian
 ```
 
-## Integrate with your tools
+---
 
-* [Set up project integrations](https://gitlab.com/EvanRoss/recipe-book/-/settings/integrations)
+## Tag System
 
-## Collaborate with your team
+Tags are organized into **categories** for cross-referencing:
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+| Category | Example Tags |
+|---|---|
+| Cuisine | Asian, Italian, Mexican, French |
+| Course | Soup, Bread, Dessert, Appetizer |
+| Diet | Vegetarian, Gluten-Free, Vegan |
+| Ingredient | Chicken, Pasta, Mushroom |
 
-## Test and Deploy
+A recipe tagged `Asian` + `Soup` appears in searches for either `Asian` or `Soup` individually,
+or both together. Tag categories are created via the API or a future admin UI.
 
-Use the built-in continuous integration in GitLab.
+### Seed tags via API
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+```bash
+# Create a category
+curl -X POST http://localhost:8000/tags/categories \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Cuisine", "slug": "cuisine"}'
 
-***
+# Create a tag in that category
+curl -X POST http://localhost:8000/tags \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Asian", "slug": "asian", "category_id": 1}'
+```
 
-# Editing this README
+---
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+## Project Structure
 
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+```
+recipe-app/
+├── backend/
+│   ├── app/
+│   │   ├── main.py          # FastAPI app + middleware
+│   │   ├── config.py        # Settings from .env
+│   │   ├── database.py      # SQLAlchemy engine + session
+│   │   ├── models.py        # ORM models (Recipe, Tag, TagCategory)
+│   │   ├── schemas.py       # Pydantic request/response schemas
+│   │   ├── routes/
+│   │   │   ├── recipes.py   # CRUD
+│   │   │   ├── tags.py      # Tag + category management
+│   │   │   ├── capture.py   # Web URL + image ingestion
+│   │   │   └── search.py    # Full-text + tag search
+│   │   └── services/
+│   │       ├── vision.py    # Claude API extraction
+│   │       ├── storage.py   # Cloudflare R2 upload/delete
+│   │       └── scraper.py   # Web page fetch + clean
+│   ├── alembic/             # DB migrations
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── .env.example
+│
+├── frontend/
+│   ├── src/
+│   │   ├── api/client.js    # Axios API calls
+│   │   ├── components/
+│   │   │   ├── Layout.jsx   # Nav + shell
+│   │   │   ├── RecipeCard.jsx
+│   │   │   └── TagPicker.jsx
+│   │   └── pages/
+│   │       ├── Home.jsx
+│   │       ├── RecipeDetail.jsx
+│   │       ├── AddRecipe.jsx
+│   │       └── Search.jsx
+│   ├── Dockerfile
+│   └── package.json
+│
+└── docker-compose.yml
+```
