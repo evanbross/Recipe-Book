@@ -119,6 +119,37 @@ CORS_ORIGINS=http://localhost:5173
 
 ---
 
+## Backing Up / Migrating Image Storage
+
+> **Note:** local dev currently runs against MinIO (`../infra`'s `dev_minio`
+> container, config'd via `MINIO_*` in `.env`), not Cloudflare R2 — the R2
+> setup above describes a separate/future target. `scripts/backup_minio.py`
+> backs up whichever bucket `backend/.env`'s `MINIO_*` settings point at.
+
+```bash
+cd backend
+
+# Back up every object (bytes + content-type + metadata + tags) to local files
+uv run python scripts/backup_minio.py backup
+# -> backend/backups/minio/<bucket>-<UTC timestamp>/manifest.json + objects/
+
+# Replay a backup into ANY S3-compatible store (a new MinIO, Garage, R2, ...) --
+# this is the actual migration path if the old MinIO instance becomes unreachable.
+uv run python scripts/backup_minio.py restore \
+  --manifest backend/backups/minio/<bucket>-<timestamp> \
+  --endpoint http://localhost:3900 \
+  --access-key <key> --secret-key <secret> \
+  --bucket recipe-images --create-bucket
+```
+
+`backup` only reads from the source bucket; `restore`'s target is always
+given explicitly on the command line, never read from this app's own
+`.env`, since the point is to populate a *different* store. After a
+restore, point `MINIO_ENDPOINT`/`MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` (or,
+if migrating to R2, the `R2_*` settings and `storage.py`) at the new store.
+
+---
+
 ## API Reference
 
 Full interactive docs at http://localhost:8000/docs when running.

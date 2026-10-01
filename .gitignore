@@ -26,3 +26,6 @@ Thumbs.db
 *.log
 /backend/.env
 /tmp
+
+# MinIO backups (scripts/backup_minio.py) -- local binary data, not source
+/backend/backups/
