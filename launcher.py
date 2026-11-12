@@ -180,8 +180,12 @@ class LauncherWindow:
 
         except Exception as exc:
             self._set_status("Startup failed.")
+            # ai: claude-opus-5-5 | 2026-11-12
+            # Bind the message now: Python unbinds `exc` when the except block ends,
+            # so a lambda reading it later on the Tk thread raised NameError instead.
+            message = str(exc)
             self._root.after(
-                0, lambda: messagebox.showerror("Startup Failed", str(exc), parent=self._root)
+                0, lambda: messagebox.showerror("Startup Failed", message, parent=self._root)
             )
 
     def _on_ready(self, url: str) -> None:

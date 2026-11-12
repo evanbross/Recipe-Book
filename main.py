@@ -200,10 +200,18 @@ def _caddy_register(api_port: int, frontend_port: int) -> bool:
 
 
 # ai: claude-opus-5-5 | 2026-11-12
+# Puts our routes back if the Caddy container restarts while we're running
+# (Caddy keeps routes in memory only). Set in the entry point below.
+_caddy_reconciler = None
+
+
+# ai: claude-opus-5-5 | 2026-11-12
 def caddy_deregister() -> None:
     """Remove this app's Caddy routes. Also called by launcher.py after a force-kill."""
     if _caddy_registry is None:
         return
+    if _caddy_reconciler is not None:
+        _caddy_reconciler.stop()  # so it can't re-add the routes we're removing
     for route_id in _CADDY_ROUTE_IDS:
         _caddy_registry.delete_route(route_id)
 
@@ -273,6 +281,13 @@ if __name__ == "__main__":
             _info("[main] WARNING: Caddy routes not registered — "
                   f"http://{_CADDY_APP_NAME}.localhost will be blank. Start the shared "
                   "infra stack: cd ../infra && docker-compose up -d")  # ai: claude-opus-5-5 | 2026-11-12
+        # ai: claude-opus-5-5 | 2026-11-12
+        # Started even if registration failed, so a Caddy started later gets our routes.
+        if _caddy_registry is not None:
+            _caddy_reconciler = _caddy_registry.RouteReconciler(
+                list(_CADDY_ROUTE_IDS), lambda: _caddy_register(backend_port, frontend_port)
+            )
+            _caddy_reconciler.start()
         _info(f"[READY] url={url}")
         _info(f"[main] Direct: backend http://localhost:{backend_port}  "
               f"frontend http://localhost:{frontend_port}")
