@@ -44,24 +44,22 @@ For the background GUI launcher (no terminal window required), use launcher.py.
 from __future__ import annotations
 
 import shutil
-import socket
 import subprocess
 import sys
 import time
 from pathlib import Path
 
-_HERE = Path(__file__).resolve().parent
-
 # ai: claude-opus-5-5 | 2026-11-12
-# Shared dev-Caddy client from the sibling ../infra repo (same pattern as
-# costcoprices, jobhuntassistant, stfc-rep-tracker). It discovers the admin API's
-# host port and sends the Origin header infra's caddy.json requires, so neither
-# is duplicated here.
-sys.path.insert(0, str(_HERE.parent / "infra"))
+# Shared dev-runner and dev-Caddy helpers: the zt-devkit package in ../infra/devkit,
+# installed into backend/.venv as an editable dev dependency by `uv sync`.
 try:
-    import caddy_registry as _caddy_registry
+    from zt_devkit import caddy_registry, devrun
 except ImportError:
-    _caddy_registry = None
+    print("[main] ERROR: zt-devkit is not installed. Check out the infra repo at ../infra, "
+          "then run: cd backend && uv sync", flush=True)
+    sys.exit(1)
+
+_HERE = Path(__file__).resolve().parent
 _BACKEND_DIR = _HERE / "backend"
 _FRONTEND_DIR = _HERE / "frontend"
 _LOG_PATH = _HERE / "server.log"
@@ -77,22 +75,7 @@ _uvicorn_proc: subprocess.Popen | None = None
 _log_fh = None  # server.log file handle (headless mode only)
 
 
-# ── .env helpers ──────────────────────────────────────────────────────────────
-
-def _parse_env() -> dict[str, str]:
-    env_file = _BACKEND_DIR / ".env"
-    result: dict[str, str] = {}
-    if not env_file.exists():
-        return result
-    for raw in env_file.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if line and not line.startswith("#") and "=" in line:
-            key, _, value = line.partition("=")
-            result[key.strip()] = value.strip()
-    return result
-
-
-_ENV = _parse_env()
+_ENV = devrun.read_env_file(_BACKEND_DIR / ".env")  # ai: claude-opus-5-5 | 2026-11-12
 _CADDY_APP_NAME = _ENV.get("CADDY_APP_NAME", "recipe-app")
 
 
@@ -104,27 +87,6 @@ def _info(msg: str) -> None:
     if _log_fh and not _log_fh.closed:
         _log_fh.write(msg + "\n")
         _log_fh.flush()
-
-
-# ── port helpers ──────────────────────────────────────────────────────────────
-
-def _free_port() -> int:
-    """Ask the OS for a free ephemeral port, then release it for the subprocess to bind."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind(("", 0))
-        return s.getsockname()[1]
-
-
-def _wait_for_port(port: int, timeout: int = 60) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            with socket.create_connection(("127.0.0.1", port), timeout=1):
-                return True
-        except OSError:
-            time.sleep(0.5)
-    return False
 
 
 # ── subprocess helpers ────────────────────────────────────────────────────────
@@ -140,28 +102,6 @@ def _popen(args: list[str], *, cwd: str) -> subprocess.Popen:
     return subprocess.Popen(args, cwd=cwd, creationflags=_NO_WINDOW)
 
 
-def _kill_proc(proc: subprocess.Popen | None) -> None:
-    if proc and proc.poll() is None:
-        if sys.platform == "win32":
-            subprocess.run(
-                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                capture_output=True, check=False,
-            )
-        else:
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-
-
-def _needs_npm_install() -> bool:
-    modules = _FRONTEND_DIR / "node_modules"
-    if not modules.exists():
-        return True
-    return (_FRONTEND_DIR / "package.json").stat().st_mtime > modules.stat().st_mtime
-
-
 # ── Caddy helpers ─────────────────────────────────────────────────────────────
 
 # ai: claude-opus-5-5 | 2026-11-12
@@ -172,12 +112,9 @@ _CADDY_ROUTE_IDS = (f"app-{_CADDY_APP_NAME}-api", f"app-{_CADDY_APP_NAME}-fronte
 def _caddy_register(api_port: int, frontend_port: int) -> bool:
     """Register /api/* (prefix stripped) and /* routes with Caddy. Idempotent.
 
-    Returns False if ../infra isn't present or Caddy can't be reached, so the
-    caller can report it instead of announcing a URL Caddy answers with a blank page.
+    Returns False if Caddy can't be reached, so the caller can report it instead
+    of announcing a URL Caddy answers with a blank page.
     """
-    if _caddy_registry is None:
-        _info("[main] WARNING: ../infra/caddy_registry.py not found.")
-        return False
     routes = [
         {
             "@id": _CADDY_ROUTE_IDS[0],
@@ -196,7 +133,7 @@ def _caddy_register(api_port: int, frontend_port: int) -> bool:
         },
     ]
     # register_route() deletes any existing route with the same @id first.
-    return all(_caddy_registry.register_route(route) for route in routes)
+    return all(caddy_registry.register_route(route) for route in routes)
 
 
 # ai: claude-opus-5-5 | 2026-11-12
@@ -208,12 +145,10 @@ _caddy_reconciler = None
 # ai: claude-opus-5-5 | 2026-11-12
 def caddy_deregister() -> None:
     """Remove this app's Caddy routes. Also called by launcher.py after a force-kill."""
-    if _caddy_registry is None:
-        return
     if _caddy_reconciler is not None:
         _caddy_reconciler.stop()  # so it can't re-add the routes we're removing
     for route_id in _CADDY_ROUTE_IDS:
-        _caddy_registry.delete_route(route_id)
+        caddy_registry.delete_route(route_id)
 
 
 # ── entry point ───────────────────────────────────────────────────────────────
@@ -229,7 +164,7 @@ if __name__ == "__main__":
         print(f"[LOG] {_LOG_PATH}", flush=True)
 
     try:
-        if _needs_npm_install():
+        if devrun.npm_install_needed(_FRONTEND_DIR):  # ai: claude-opus-5-5 | 2026-11-12
             _info("[STATUS] Installing frontend dependencies...")
             result = subprocess.run(
                 [npm, "install"],
@@ -241,8 +176,8 @@ if __name__ == "__main__":
                 print("[main] ERROR: npm install failed.", flush=True)
                 sys.exit(1)
 
-        backend_port = _free_port()
-        frontend_port = _free_port()
+        backend_port = devrun.free_port()  # ai: claude-opus-5-5 | 2026-11-12
+        frontend_port = devrun.free_port()
 
         _info(f"[STATUS] Starting frontend on :{frontend_port}...")
         _vite_proc = _popen(
@@ -261,13 +196,13 @@ if __name__ == "__main__":
         )
 
         _info("[STATUS] Waiting for backend...")
-        if not _wait_for_port(backend_port):
-            print("[main] ERROR: Backend did not start within 60 s.", flush=True)
+        if not devrun.wait_for_port(backend_port, proc=_uvicorn_proc):  # ai: claude-opus-5-5 | 2026-11-12
+            print("[main] ERROR: Backend exited or did not start within 60 s.", flush=True)
             sys.exit(1)
 
         _info("[STATUS] Waiting for frontend...")
-        if not _wait_for_port(frontend_port):
-            print("[main] ERROR: Frontend did not start within 60 s.", flush=True)
+        if not devrun.wait_for_port(frontend_port, proc=_vite_proc):  # ai: claude-opus-5-5 | 2026-11-12
+            print("[main] ERROR: Frontend exited or did not start within 60 s.", flush=True)
             sys.exit(1)
 
         # ai: claude-opus-5-5 | 2026-11-11
@@ -283,11 +218,10 @@ if __name__ == "__main__":
                   "infra stack: cd ../infra && docker-compose up -d")  # ai: claude-opus-5-5 | 2026-11-12
         # ai: claude-opus-5-5 | 2026-11-12
         # Started even if registration failed, so a Caddy started later gets our routes.
-        if _caddy_registry is not None:
-            _caddy_reconciler = _caddy_registry.RouteReconciler(
-                list(_CADDY_ROUTE_IDS), lambda: _caddy_register(backend_port, frontend_port)
-            )
-            _caddy_reconciler.start()
+        _caddy_reconciler = caddy_registry.RouteReconciler(
+            list(_CADDY_ROUTE_IDS), lambda: _caddy_register(backend_port, frontend_port)
+        )
+        _caddy_reconciler.start()
         _info(f"[READY] url={url}")
         _info(f"[main] Direct: backend http://localhost:{backend_port}  "
               f"frontend http://localhost:{frontend_port}")
@@ -302,7 +236,7 @@ if __name__ == "__main__":
         _info("\n[main] Shutting down...")
     finally:
         caddy_deregister()
-        _kill_proc(_vite_proc)
-        _kill_proc(_uvicorn_proc)
+        devrun.kill_process_tree(_vite_proc)  # ai: claude-opus-5-5 | 2026-11-12
+        devrun.kill_process_tree(_uvicorn_proc)
         if _log_fh and not _log_fh.closed:
             _log_fh.close()

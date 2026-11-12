@@ -24,15 +24,16 @@ Capture and organize recipes from web pages, photos, scans, and emails. Powered 
 - **PostgreSQL** reachable with the credentials in `backend/.env`
 - The sibling **`../infra`** repo, checked out next to this one, with its stack running
   (`cd ../infra && docker-compose up -d`). It provides MinIO (`dev_minio`) and the shared
-  dev Caddy. `main.py` imports `../infra/caddy_registry.py` to register its routes; that
-  module finds Caddy's admin port itself. The backend refuses to start if MinIO or its
-  bucket is unreachable.
+  dev Caddy. It also holds `zt-devkit` (`../infra/devkit`), the shared dev-runner and
+  Caddy-registration helpers `main.py` uses; `uv sync` installs it into `backend/.venv` as an
+  editable dev dependency, so `uv sync` fails if `../infra` is missing. The backend refuses
+  to start if MinIO or its bucket is unreachable.
 
 ### 1. Install and configure
 
 ```bash
 cd backend
-uv sync                      # creates backend/.venv from uv.lock (dev deps included)
+uv sync                      # creates backend/.venv (Python 3.14, see .python-version) incl. dev deps
 cp .env.example .env         # then fill in real values (see Configuration)
 uv run alembic upgrade head  # create / migrate the database schema
 ```

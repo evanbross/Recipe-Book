@@ -25,6 +25,9 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    # Shared dev-runner + dev-Caddy helpers from ../infra (local dev only; Docker
+    # builds and exported requirements use --no-dev, so they never need ../infra).
+    "zt-devkit",
     "pytest>=8.3.5",
     "pytest-cov>=6.1.0",
 ]
@@ -35,3 +38,6 @@ norecursedirs = ["tmp", ".venv", "backups", "__pycache__"]
 
 [tool.uv]
 link-mode = "symlink"
+
+[tool.uv.sources]
+zt-devkit = { path = "../../infra/devkit", editable = true }

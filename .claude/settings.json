@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash",
+      "PowerShell",
+      "Edit",
+      "Write",
+      "WebSearch",
+      "Skill(update-config)",
+      "Skill(claude-api)",
+      "Skill(run)",
+      "Read(//mnt/f/Evan-F/Projects/**)",
+      "Read(//f/Evan-F/Projects/infra/**)",
+      "Read(//f/Evan-F/**)"
+    ]
+  }
+}
