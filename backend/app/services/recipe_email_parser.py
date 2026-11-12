@@ -39,7 +39,7 @@ import logging
 import anthropic
 
 from app.config import settings
-from app.database.schemas import CaptureResult
+from app.schemas import CaptureResult
 
 logger = logging.getLogger(__name__)
 

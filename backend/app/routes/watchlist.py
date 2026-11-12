@@ -36,7 +36,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models
-from app.database.schemas import WatchedSiteCreate, WatchedSiteOut, WatchedSiteUpdate
+from app.schemas import WatchedSiteCreate, WatchedSiteOut, WatchedSiteUpdate
 
 logger = logging.getLogger(__name__)
 

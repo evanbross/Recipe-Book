@@ -69,10 +69,16 @@ def test_capture_url_with_tags(client, make_tag, capture_result):
             json={"url": "https://example.com/recipe", "tag_ids": [tag.id]},
         )
 
+    # ai: claude-opus-5-5 | 2026-11-11
+    # capture_from_url also attaches an auto-derived source tag (example.com →
+    # "Example", under the Source category) alongside the caller's tag_ids.
     payload = response.json()
     assert response.status_code == 200
-    assert len(payload["tags"]) == 1
-    assert payload["tags"][0]["id"] == tag.id
+    tags_by_id = {t["id"]: t for t in payload["tags"]}
+    assert len(tags_by_id) == 2
+    assert tag.id in tags_by_id
+    source_tags = [t for t in payload["tags"] if t["id"] != tag.id]
+    assert source_tags[0]["name"] == "Example"
 
 
 # ── URL capture — OG image stored in MinIO ────────────────────────────────────

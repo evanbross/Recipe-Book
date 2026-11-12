@@ -894,6 +894,7 @@ dependencies = [
     { name = "google-auth-oauthlib" },
     { name = "httpx" },
     { name = "pillow" },
+    { name = "psycopg2-binary" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "python-dotenv" },
@@ -904,7 +905,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "psycopg2-binary" },
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
@@ -921,6 +921,7 @@ requires-dist = [
     { name = "google-auth-oauthlib", specifier = ">=1.2.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "pillow", specifier = ">=12.2.0" },
+    { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pydantic-settings", specifier = ">=2.14.1" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
@@ -931,7 +932,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "pytest-cov", specifier = ">=6.1.0" },
 ]

@@ -33,12 +33,16 @@ def test_search_no_match(client, make_recipe):
     assert payload["results"] == []
 
 
+# ai: claude-opus-5-5 | 2026-11-11
+# The route filters on `tag_ids` (comma-separated integer IDs) — not slugs.
+# An unrecognised query param is silently ignored by FastAPI, so the old
+# `?tags=<slug>` tests never applied any filter at all.
 def test_search_tag_filter_single(client, make_recipe, make_tag):
     italian = make_tag(name="Italian", slug="italian")
     tagged = make_recipe(title="Tagged", tags=[italian])
     make_recipe(title="Untagged")
 
-    response = client.get("/search?tags=italian")
+    response = client.get(f"/search?tag_ids={italian.id}")
     payload = response.json()
 
     assert response.status_code == 200
@@ -47,6 +51,7 @@ def test_search_tag_filter_single(client, make_recipe, make_tag):
     assert payload["results"][0]["id"] == tagged.id
 
 
+# ai: claude-opus-5-5 | 2026-11-11
 def test_search_tag_filter_and_logic(client, make_recipe, make_tag):
     italian = make_tag(name="Italian", slug="italian")
     vegetarian = make_tag(name="Vegetarian", slug="vegetarian")
@@ -55,7 +60,7 @@ def test_search_tag_filter_and_logic(client, make_recipe, make_tag):
     make_recipe(title="B", tags=[italian])
     make_recipe(title="C", tags=[vegetarian])
 
-    response = client.get("/search?tags=italian,vegetarian")
+    response = client.get(f"/search?tag_ids={italian.id},{vegetarian.id}")
     payload = response.json()
 
     assert response.status_code == 200
@@ -64,11 +69,46 @@ def test_search_tag_filter_and_logic(client, make_recipe, make_tag):
     assert payload["results"][0]["id"] == recipe_a.id
 
 
-def test_search_tag_unknown_slug_ignored(client, make_recipe):
+# ai: claude-opus-5-5 | 2026-11-11
+def test_search_tag_filter_or_logic(client, make_recipe, make_tag):
+    italian = make_tag(name="Italian", slug="italian")
+    vegetarian = make_tag(name="Vegetarian", slug="vegetarian")
+    mexican = make_tag(name="Mexican", slug="mexican")
+
+    recipe_a = make_recipe(title="A", tags=[italian, vegetarian])
+    recipe_b = make_recipe(title="B", tags=[italian])
+    recipe_c = make_recipe(title="C", tags=[vegetarian])
+    make_recipe(title="D", tags=[mexican])
+
+    response = client.get(f"/search?tag_ids={italian.id},{vegetarian.id}&tag_mode=or")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["total"] == 3
+    assert {r["id"] for r in payload["results"]} == {recipe_a.id, recipe_b.id, recipe_c.id}
+
+
+# ai: claude-opus-5-5 | 2026-11-11
+def test_search_tag_unknown_id_matches_nothing(client, make_recipe):
+    """An unknown tag ID is still applied as a filter, so nothing can match it."""
     make_recipe(title="Recipe 1")
     make_recipe(title="Recipe 2")
 
-    response = client.get("/search?tags=nonexistent")
+    response = client.get("/search?tag_ids=99999")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["total"] == 0
+    assert payload["results"] == []
+
+
+# ai: claude-opus-5-5 | 2026-11-11
+def test_search_tag_ids_non_numeric_ignored(client, make_recipe):
+    """Non-numeric entries in tag_ids are dropped; with none left, no tag filter applies."""
+    make_recipe(title="Recipe 1")
+    make_recipe(title="Recipe 2")
+
+    response = client.get("/search?tag_ids=italian,abc")
     payload = response.json()
 
     assert response.status_code == 200
@@ -100,7 +140,7 @@ def test_search_combined_text_and_tag(client, make_recipe, make_tag):
     tagged = make_recipe(title="Ramen", tags=[asian])
     make_recipe(title="Ramen")
 
-    response = client.get("/search?q=ramen&tags=asian")
+    response = client.get(f"/search?q=ramen&tag_ids={asian.id}")  # ai: claude-opus-5-5 | 2026-11-11
     payload = response.json()
 
     assert response.status_code == 200

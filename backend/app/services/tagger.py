@@ -31,7 +31,7 @@ from typing import Optional
 import anthropic
 
 from app.config import settings
-from app.database.schemas import SuggestedNewTag, TagSuggestResponse
+from app.schemas import SuggestedNewTag, TagSuggestResponse
 
 logger = logging.getLogger(__name__)
 

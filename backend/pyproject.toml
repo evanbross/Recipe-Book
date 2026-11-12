@@ -20,14 +20,18 @@ dependencies = [
     "google-auth>=2.36.0",
     "google-auth-oauthlib>=1.2.0",
     "google-api-python-client>=2.164.0",
+    "psycopg2-binary>=2.9.10",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.3.5",
     "pytest-cov>=6.1.0",
-    "psycopg2-binary>=2.9.10",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["tmp", ".venv", "backups", "__pycache__"]
 
 [tool.uv]
 link-mode = "symlink"

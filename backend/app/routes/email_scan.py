@@ -44,7 +44,7 @@ from sqlalchemy.orm import Session
 from app.config import GMAIL_SCOPES, GOOGLE_CREDENTIALS_FILE, GOOGLE_TOKEN_FILE, settings
 from app.database import SessionLocal, get_db
 from app import models
-from app.database.schemas import (
+from app.schemas import (
     EmailAuthStatus,
     EmailCandidateOut,
     EmailConnectResponse,
