@@ -1,130 +1,153 @@
 # Recipe Organizer
 
-Capture and organize recipes from web pages, photos, and scans. Powered by Claude vision AI.
+Capture and organize recipes from web pages, photos, scans, and emails. Powered by Claude vision AI.
 
 ## Stack
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 18 + Vite |
-| Backend | Python 3.12 + FastAPI |
-| Database | PostgreSQL 16 |
-| Image Storage | Cloudflare R2 |
+| Frontend | React 18 + Vite 5 |
+| Backend | Python 3.14 + FastAPI, managed with [uv](https://docs.astral.sh/uv/) |
+| Database | PostgreSQL (local or managed, e.g. Neon) |
+| Image Storage | MinIO (S3-compatible) |
 | AI Extraction | Anthropic Claude API |
 | ORM | SQLAlchemy 2 + Alembic |
+| Dev routing | Caddy reverse proxy (`http://recipe-app.localhost`) |
 
 ---
 
-## Quick Start (Docker)
+## Running the App
 
-### 1. Clone and configure
+### Prerequisites
+
+- **uv** and **Node.js / npm** on `PATH`
+- **PostgreSQL** reachable with the credentials in `backend/.env`
+- The sibling **`../infra`** repo, checked out next to this one, with its stack running
+  (`cd ../infra && docker-compose up -d`). It provides MinIO (`dev_minio`) and the shared
+  dev Caddy. `main.py` imports `../infra/caddy_registry.py` to register its routes; that
+  module finds Caddy's admin port itself. The backend refuses to start if MinIO or its
+  bucket is unreachable.
+
+### 1. Install and configure
 
 ```bash
 cd backend
-cp .env.example .env
-# Edit .env with your real keys (see Configuration below)
+uv sync                      # creates backend/.venv from uv.lock (dev deps included)
+cp .env.example .env         # then fill in real values (see Configuration)
+uv run alembic upgrade head  # create / migrate the database schema
 ```
 
-### 2. Start everything
+The schema is managed only by Alembic — nothing creates tables automatically at startup.
+
+### 2. Start
+
+From the repo root:
 
 ```bash
-docker-compose up --build
+backend/.venv/Scripts/python main.py       # terminal; Ctrl-C stops everything
+backend/.venv/Scripts/python launcher.py   # small GUI window with Open Browser / Restart / Stop
 ```
 
-- Frontend: http://localhost:5173  
-- Backend API: http://localhost:8000  
-- API docs: http://localhost:8000/docs
+`main.py` picks a free port for the backend and for Vite on every start, registers both
+with Caddy, and prints a `[READY]` line when they're up.
+
+### URLs
+
+| What | URL |
+|---|---|
+| **App** | **http://recipe-app.localhost** |
+| API (via Caddy) | http://recipe-app.localhost/api/... — Caddy strips `/api` before forwarding |
+| API docs | `http://localhost:<backend port>/docs` — use the backend port from the `Direct:` line `main.py` prints |
+
+The hostname comes from `CADDY_APP_NAME` in `backend/.env`. The ports change on each start,
+so don't bookmark them.
+
+The interactive API docs only work on the direct backend port. Through Caddy, the docs
+page loads its schema from `/openapi.json` without the `/api` prefix, so the request
+goes to the frontend and fails.
+
+The frontend calls the API at the relative path `/api`, and Vite has no proxy for it,
+so **the UI only works through Caddy**. Without Caddy, only the backend is usable
+(directly on its port).
 
 ---
 
-## Local Development (without Docker)
+## Docker
 
-### PostgreSQL
-
-Install PostgreSQL and create the database:
-
-```sql
-CREATE USER recipe_user WITH PASSWORD 'recipe_pass';
-CREATE DATABASE recipe_db OWNER recipe_user;
-```
-
-### Backend
-
-```bash
-cd backend
-python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # macOS/Linux
-
-pip install -r requirements.txt
-cp .env.example .env          # fill in your keys
-
-uvicorn app.main:app --reload
-```
-
-Tables are created automatically on first run via `Base.metadata.create_all()`.
-
-For production migrations use Alembic:
-
-```bash
-alembic revision --autogenerate -m "initial"
-alembic upgrade head
-```
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
+`docker-compose.yml` and the Dockerfiles are from an earlier fixed-port setup and are
+**not currently maintained**. Under Compose the frontend can't reach the API (no `/api`
+proxy without Caddy), and the bundled `db` service's credentials don't match the `.env`
+format. Use the local setup above.
 
 ---
 
 ## Configuration
 
-Edit `backend/.env`:
+All settings live in `backend/.env`. Start from `backend/.env.example`, which lists every
+key with comments. If `.env` is missing, the backend writes a template and exits. The groups are:
 
-```env
-# PostgreSQL connection
-DATABASE_URL=postgresql://recipe_user:recipe_pass@localhost:5432/recipe_db
-
-# Get from https://console.anthropic.com
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Cloudflare R2 — see setup below
-R2_ACCOUNT_ID=...
-R2_ACCESS_KEY_ID=...
-R2_SECRET_ACCESS_KEY=...
-R2_BUCKET_NAME=recipe-images
-R2_PUBLIC_URL=https://your-bucket.your-account.r2.dev
-
-# Any random string for JWT signing
-SECRET_KEY=change-me
-
-# Comma-separated allowed origins for CORS
-CORS_ORIGINS=http://localhost:5173
-```
+| Group | Keys | Notes |
+|---|---|---|
+| Database | `POSTGRES_*` or `DATABASE_URL` | Individual vars are assembled into a URL; set `POSTGRES_SSLMODE=require` for managed hosts such as Neon |
+| Test database | `POSTGRES_TEST_*` | Used only by pytest — see [Running Tests](#running-tests) |
+| Claude | `ANTHROPIC_API_KEY` | From https://console.anthropic.com |
+| Image storage | `MINIO_*` | Endpoint, keys, bucket, and public URL of the MinIO bucket |
+| App | `SECRET_KEY`, `CORS_ORIGINS` | |
+| Capture listener | `CAPTURE_LISTENER_*` | Local port the Tampermonkey userscript posts captures to |
+| Caddy | `CADDY_APP_NAME` | App hostname (`<name>.localhost`) |
+| Email scanning | `GOOGLE_OAUTH_REDIRECT_URI`, `EMAIL_SCAN_*` | Gmail OAuth; credentials go in `backend/credentials/` |
 
 ---
 
-## Cloudflare R2 Setup
+## Running Tests
 
-1. Log in to [dash.cloudflare.com](https://dash.cloudflare.com) → **R2**
-2. Create a bucket named `recipe-images`
-3. Enable **Public Access** on the bucket (or use a custom domain)
-4. Go to **R2 → Manage R2 API tokens** → Create token with Object Read & Write
-5. Copy `Account ID`, `Access Key ID`, `Secret Access Key` into `.env`
-6. Set `R2_PUBLIC_URL` to the bucket's public URL shown in the dashboard
+The backend has a pytest integration suite that runs against a **real PostgreSQL test
+database** (no SQLite, no mocked DB). External services — Claude, MinIO, the web
+scraper — are mocked.
+
+### One-time setup
+
+Create a dedicated role and database as a PostgreSQL superuser. The test user must
+**own** the database, because each run drops and rebuilds the `public` schema:
+
+```sql
+CREATE USER recipe_test_app WITH PASSWORD 'choose-one';
+CREATE DATABASE recipe_test OWNER recipe_test_app;
+```
+
+Then add to `backend/.env`:
+
+```env
+POSTGRES_TEST_HOST=localhost
+POSTGRES_TEST_PORT=5432
+POSTGRES_TEST_DB=recipe_test
+POSTGRES_TEST_USER=recipe_test_app
+POSTGRES_TEST_PASSWORD=choose-one
+POSTGRES_TEST_SSLMODE=prefer   # local servers usually have SSL off; "require" will fail
+```
+
+Alternatively, set `TEST_DATABASE_URL` in the environment; it takes precedence.
+
+### Run
+
+```bash
+cd backend
+.venv/Scripts/python -m pytest
+```
+
+Each session rebuilds the schema with `alembic upgrade head`, so the tests also confirm
+that the migration chain matches the models. Safety guards:
+
+- The suite refuses to run unless the database name ends in `_test`.
+- Only the `POSTGRES_TEST_*` keys are read from `.env`, so the real API keys and the
+  main database never reach the test process.
 
 ---
 
 ## Backing Up / Migrating Image Storage
 
-> **Note:** local dev currently runs against MinIO (`../infra`'s `dev_minio`
-> container, config'd via `MINIO_*` in `.env`), not Cloudflare R2 — the R2
-> setup above describes a separate/future target. `scripts/backup_minio.py`
-> backs up whichever bucket `backend/.env`'s `MINIO_*` settings point at.
+`scripts/backup_minio.py` backs up whichever bucket `backend/.env`'s `MINIO_*`
+settings point at.
 
 ```bash
 cd backend
@@ -145,38 +168,61 @@ uv run python scripts/backup_minio.py restore \
 `backup` only reads from the source bucket; `restore`'s target is always
 given explicitly on the command line, never read from this app's own
 `.env`, since the point is to populate a *different* store. After a
-restore, point `MINIO_ENDPOINT`/`MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` (or,
-if migrating to R2, the `R2_*` settings and `storage.py`) at the new store.
+restore, point `MINIO_ENDPOINT`/`MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` at the new store.
+
+### Future: Cloudflare R2
+
+R2 is a possible future storage target; it is not wired up today. Because R2 is
+S3-compatible, moving to it means restoring a backup into an R2 bucket (above) and
+pointing the `MINIO_*` settings at the R2 endpoint. Bucket setup:
+
+1. In [dash.cloudflare.com](https://dash.cloudflare.com) → **R2**, create a bucket (e.g. `recipe-images`)
+2. Enable **Public Access** on the bucket (or use a custom domain)
+3. **R2 → Manage R2 API tokens** → create a token with Object Read & Write
+4. Use the account's S3 endpoint, the token's access key ID and secret, and the bucket's public URL
 
 ---
 
 ## API Reference
 
-Full interactive docs at http://localhost:8000/docs when running.
+Paths below are the backend's own routes. Through Caddy, prefix them with
+`http://recipe-app.localhost/api`.
 
 ### Key endpoints
 
 | Method | Path | Description |
 |---|---|---|
-| GET | /recipes | List all recipes |
+| GET | /health | Health check |
+| GET | /recipes | List recipes (`skip`, `limit`) |
 | GET | /recipes/{id} | Get single recipe |
 | POST | /recipes | Create manually |
 | PATCH | /recipes/{id} | Update recipe |
-| DELETE | /recipes/{id} | Delete recipe |
+| DELETE | /recipes/{id} | Delete recipe (and its stored images) |
 | POST | /capture/url | Capture from web URL |
-| POST | /capture/image | Extract from image/scan |
-| GET | /tags | List all tags |
-| GET | /tags/categories | List tag categories |
+| POST | /capture/image | Extract from image/scan (multipart upload) |
+| POST | /capture/scan | List links on a page for bulk capture |
+| GET | /tags | List tags (optional `category_id`) |
 | POST | /tags | Create tag |
+| POST | /tags/suggest | Claude tag suggestions for a recipe |
+| GET | /tags/categories | List tag categories |
 | POST | /tags/categories | Create tag category |
 | GET | /search | Search + filter by tags |
 
-### Search examples
+Email scanning and watchlist endpoints are listed in the interactive docs.
+
+### Search
+
+- **`q`**: free text. It supports `AND`, `OR`, `NOT` / `-word`, parentheses, and `word*`
+  prefix wildcards.
+- **`tag_ids`**: comma-separated tag **IDs** (not slugs). Non-numeric entries are ignored.
+- **`tag_mode`**: `and` (default; a recipe must have every listed tag) or `or` (any one of them).
+- **`page`** and **`page_size`**: paging.
 
 ```
 GET /search?q=ramen
-GET /search?tags=asian,soup
-GET /search?q=bread&tags=italian
+GET /search?tag_ids=3,7
+GET /search?tag_ids=3,7&tag_mode=or
+GET /search?q=bread&tag_ids=2
 ```
 
 ---
@@ -191,20 +237,21 @@ Tags are organized into **categories** for cross-referencing:
 | Course | Soup, Bread, Dessert, Appetizer |
 | Diet | Vegetarian, Gluten-Free, Vegan |
 | Ingredient | Chicken, Pasta, Mushroom |
+| Source | Added automatically on web capture (site or publisher name) |
 
-A recipe tagged `Asian` + `Soup` appears in searches for either `Asian` or `Soup` individually,
-or both together. Tag categories are created via the API or a future admin UI.
+A recipe tagged `Asian` + `Soup` appears in searches for either tag on its own, or both
+together. Tags and categories can be created in the UI or via the API.
 
 ### Seed tags via API
 
 ```bash
 # Create a category
-curl -X POST http://localhost:8000/tags/categories \
+curl -X POST http://recipe-app.localhost/api/tags/categories \
   -H "Content-Type: application/json" \
   -d '{"name": "Cuisine", "slug": "cuisine"}'
 
 # Create a tag in that category
-curl -X POST http://localhost:8000/tags \
+curl -X POST http://recipe-app.localhost/api/tags \
   -H "Content-Type: application/json" \
   -d '{"name": "Asian", "slug": "asian", "category_id": 1}'
 ```
@@ -214,42 +261,33 @@ curl -X POST http://localhost:8000/tags \
 ## Project Structure
 
 ```
-recipe-app/
+Recipe App/
+├── main.py                  # Dev entry point: free ports, uvicorn + Vite, Caddy registration
+├── launcher.py              # Tkinter GUI wrapper around main.py
 ├── backend/
 │   ├── app/
-│   │   ├── main.py          # FastAPI app + middleware
-│   │   ├── config.py        # Settings from .env
-│   │   ├── database.py      # SQLAlchemy engine + session
-│   │   ├── models.py        # ORM models (Recipe, Tag, TagCategory)
+│   │   ├── main.py          # FastAPI app, lifespan startup checks, routers
+│   │   ├── config.py        # Settings from .env (pydantic-settings)
 │   │   ├── schemas.py       # Pydantic request/response schemas
-│   │   ├── routes/
-│   │   │   ├── recipes.py   # CRUD
-│   │   │   ├── tags.py      # Tag + category management
-│   │   │   ├── capture.py   # Web URL + image ingestion
-│   │   │   └── search.py    # Full-text + tag search
-│   │   └── services/
-│   │       ├── vision.py    # Claude API extraction
-│   │       ├── storage.py   # Cloudflare R2 upload/delete
-│   │       └── scraper.py   # Web page fetch + clean
+│   │   ├── database/        # SQLAlchemy engine, session, get_db
+│   │   ├── models/          # ORM models
+│   │   ├── routes/          # recipes, tags, capture, search, email_scan, watchlist
+│   │   └── services/        # vision (Claude), storage (MinIO), scraper, sources,
+│   │                        # tagger, gmail_client, capture_listener, ...
 │   ├── alembic/             # DB migrations
+│   ├── tests/               # pytest integration suite
+│   ├── scripts/             # backup_minio.py
+│   ├── pyproject.toml       # dependencies (uv)
+│   ├── uv.lock
 │   ├── Dockerfile
-│   ├── requirements.txt
 │   └── .env.example
-│
 ├── frontend/
 │   ├── src/
-│   │   ├── api/client.js    # Axios API calls
+│   │   ├── api/client.js    # Axios client (baseURL /api)
 │   │   ├── components/
-│   │   │   ├── Layout.jsx   # Nav + shell
-│   │   │   ├── RecipeCard.jsx
-│   │   │   └── TagPicker.jsx
-│   │   └── pages/
-│   │       ├── Home.jsx
-│   │       ├── RecipeDetail.jsx
-│   │       ├── AddRecipe.jsx
-│   │       └── Search.jsx
-│   ├── Dockerfile
+│   │   ├── pages/           # Home, RecipeDetail, AddRecipe, Search, Settings
+│   │   └── utils/
 │   └── package.json
-│
-└── docker-compose.yml
+├── tampermonkey/            # Userscript that sends pages to the capture listener
+└── docker-compose.yml       # Not currently maintained (see Docker)
 ```

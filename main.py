@@ -43,17 +43,25 @@ For the background GUI launcher (no terminal window required), use launcher.py.
 """
 from __future__ import annotations
 
-import json
 import shutil
 import socket
 import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
+
+# ai: claude-opus-5-5 | 2026-11-12
+# Shared dev-Caddy client from the sibling ../infra repo (same pattern as
+# costcoprices, jobhuntassistant, stfc-rep-tracker). It discovers the admin API's
+# host port and sends the Origin header infra's caddy.json requires, so neither
+# is duplicated here.
+sys.path.insert(0, str(_HERE.parent / "infra"))
+try:
+    import caddy_registry as _caddy_registry
+except ImportError:
+    _caddy_registry = None
 _BACKEND_DIR = _HERE / "backend"
 _FRONTEND_DIR = _HERE / "frontend"
 _LOG_PATH = _HERE / "server.log"
@@ -61,7 +69,7 @@ _LOG_PATH = _HERE / "server.log"
 # When stdout is not a terminal we're running inside the GUI launcher.
 # Suppress console pop-ups and write subprocess output to server.log instead of
 # inherited handles (which on Windows don't flow through a parent's PIPE).
-_HEADLESS = not sys.stdout.isatty()
+_HEADLESS = not (sys.stdout and sys.stdout.isatty())  # ai: claude-opus-5-5 | 2026-11-12 -- stdout is None under pythonw
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" and _HEADLESS else 0
 
 _vite_proc: subprocess.Popen | None = None
@@ -85,7 +93,6 @@ def _parse_env() -> dict[str, str]:
 
 
 _ENV = _parse_env()
-_CADDY_ADMIN_URL = _ENV.get("CADDY_ADMIN_URL", "http://localhost:2019")
 _CADDY_APP_NAME = _ENV.get("CADDY_APP_NAME", "recipe-app")
 
 
@@ -157,13 +164,23 @@ def _needs_npm_install() -> bool:
 
 # ── Caddy helpers ─────────────────────────────────────────────────────────────
 
-def _caddy_register(api_port: int, frontend_port: int) -> None:
-    """Register /api/* and /* routes with Caddy. Idempotent; silent if Caddy is down."""
-    _caddy_delete_route(f"app-{_CADDY_APP_NAME}-api")
-    _caddy_delete_route(f"app-{_CADDY_APP_NAME}-frontend")
-    for route in [
+# ai: claude-opus-5-5 | 2026-11-12
+_CADDY_ROUTE_IDS = (f"app-{_CADDY_APP_NAME}-api", f"app-{_CADDY_APP_NAME}-frontend")
+
+
+# ai: claude-opus-5-5 | 2026-11-12
+def _caddy_register(api_port: int, frontend_port: int) -> bool:
+    """Register /api/* (prefix stripped) and /* routes with Caddy. Idempotent.
+
+    Returns False if ../infra isn't present or Caddy can't be reached, so the
+    caller can report it instead of announcing a URL Caddy answers with a blank page.
+    """
+    if _caddy_registry is None:
+        _info("[main] WARNING: ../infra/caddy_registry.py not found.")
+        return False
+    routes = [
         {
-            "@id": f"app-{_CADDY_APP_NAME}-api",
+            "@id": _CADDY_ROUTE_IDS[0],
             "match": [{"host": [f"{_CADDY_APP_NAME}.localhost"], "path": ["/api", "/api/*"]}],
             "handle": [
                 {"handler": "rewrite", "strip_path_prefix": "/api"},
@@ -171,36 +188,24 @@ def _caddy_register(api_port: int, frontend_port: int) -> None:
             ],
         },
         {
-            "@id": f"app-{_CADDY_APP_NAME}-frontend",
+            "@id": _CADDY_ROUTE_IDS[1],
             "match": [{"host": [f"{_CADDY_APP_NAME}.localhost"]}],
             "handle": [
                 {"handler": "reverse_proxy", "upstreams": [{"dial": f"host.docker.internal:{frontend_port}"}]},
             ],
         },
-    ]:
-        try:
-            req = urllib.request.Request(
-                f"{_CADDY_ADMIN_URL}/config/apps/http/servers/dev/routes",
-                data=json.dumps(route).encode(),
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            urllib.request.urlopen(req, timeout=3)
-        except (urllib.error.URLError, OSError):
-            return
+    ]
+    # register_route() deletes any existing route with the same @id first.
+    return all(_caddy_registry.register_route(route) for route in routes)
 
 
-def _caddy_deregister() -> None:
-    for suffix in ("api", "frontend"):
-        _caddy_delete_route(f"app-{_CADDY_APP_NAME}-{suffix}")
-
-
-def _caddy_delete_route(route_id: str) -> None:
-    try:
-        req = urllib.request.Request(f"{_CADDY_ADMIN_URL}/id/{route_id}", method="DELETE")
-        urllib.request.urlopen(req, timeout=3)
-    except (urllib.error.HTTPError, urllib.error.URLError, OSError):
-        pass
+# ai: claude-opus-5-5 | 2026-11-12
+def caddy_deregister() -> None:
+    """Remove this app's Caddy routes. Also called by launcher.py after a force-kill."""
+    if _caddy_registry is None:
+        return
+    for route_id in _CADDY_ROUTE_IDS:
+        _caddy_registry.delete_route(route_id)
 
 
 # ── entry point ───────────────────────────────────────────────────────────────
@@ -257,9 +262,17 @@ if __name__ == "__main__":
             print("[main] ERROR: Frontend did not start within 60 s.", flush=True)
             sys.exit(1)
 
-        _caddy_register(backend_port, frontend_port)
-
-        url = f"http://{_CADDY_APP_NAME}.localhost"
+        # ai: claude-opus-5-5 | 2026-11-11
+        # Without Caddy routes the hostname serves an empty page, so fall back to
+        # the direct Vite URL (the UI's /api calls won't work there, but the
+        # launcher's Open Browser button at least lands on something real).
+        if _caddy_register(backend_port, frontend_port):
+            url = f"http://{_CADDY_APP_NAME}.localhost"
+        else:
+            url = f"http://localhost:{frontend_port}"
+            _info("[main] WARNING: Caddy routes not registered — "
+                  f"http://{_CADDY_APP_NAME}.localhost will be blank. Start the shared "
+                  "infra stack: cd ../infra && docker-compose up -d")  # ai: claude-opus-5-5 | 2026-11-12
         _info(f"[READY] url={url}")
         _info(f"[main] Direct: backend http://localhost:{backend_port}  "
               f"frontend http://localhost:{frontend_port}")
@@ -273,7 +286,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         _info("\n[main] Shutting down...")
     finally:
-        _caddy_deregister()
+        caddy_deregister()
         _kill_proc(_vite_proc)
         _kill_proc(_uvicorn_proc)
         if _log_fh and not _log_fh.closed:

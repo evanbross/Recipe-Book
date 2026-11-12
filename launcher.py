@@ -45,11 +45,14 @@ import subprocess
 import sys
 import threading
 import tkinter as tk
-import urllib.error
-import urllib.request
 import webbrowser
 from pathlib import Path
 from tkinter import font as tkfont, messagebox, ttk
+
+# ai: claude-opus-5-5 | 2026-11-12
+# main.py owns Caddy registration; reuse its deregister (backed by ../infra's
+# caddy_registry) rather than keeping a second copy of the admin-API logic.
+from main import caddy_deregister
 
 _HERE = Path(__file__).resolve().parent
 _BACKEND_DIR = _HERE / "backend"
@@ -62,24 +65,6 @@ _MUTED = "#8b949e"
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 
-def _parse_env() -> dict[str, str]:
-    env_file = _BACKEND_DIR / ".env"
-    result: dict[str, str] = {}
-    if not env_file.exists():
-        return result
-    for raw in env_file.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if line and not line.startswith("#") and "=" in line:
-            key, _, value = line.partition("=")
-            result[key.strip()] = value.strip()
-    return result
-
-
-_ENV = _parse_env()
-_CADDY_ADMIN_URL = _ENV.get("CADDY_ADMIN_URL", "http://localhost:2019")
-_CADDY_APP_NAME = _ENV.get("CADDY_APP_NAME", "recipe-app")
-
-
 def _python() -> str:
     """Return the venv Python path, falling back to sys.executable."""
     scripts = "Scripts" if sys.platform == "win32" else "bin"
@@ -89,21 +74,8 @@ def _python() -> str:
 
 
 # ── Caddy safety deregister ───────────────────────────────────────────────────
-# main.py deregisters on clean shutdown, but a force-kill skips that.  These
-# helpers let the launcher deregister anyway when Stop is clicked.
-
-def _caddy_deregister() -> None:
-    for suffix in ("api", "frontend"):
-        _caddy_delete_route(f"app-{_CADDY_APP_NAME}-{suffix}")
-
-
-def _caddy_delete_route(route_id: str) -> None:
-    try:
-        req = urllib.request.Request(f"{_CADDY_ADMIN_URL}/id/{route_id}", method="DELETE")
-        urllib.request.urlopen(req, timeout=3)
-    except (urllib.error.HTTPError, urllib.error.URLError, OSError):
-        pass
-
+# main.py deregisters on clean shutdown, but Stop force-kills it, which skips
+# that -- so _stop_processes calls main.caddy_deregister (imported above) first.
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 
@@ -236,7 +208,7 @@ class LauncherWindow:
         self._root.destroy()
 
     def _stop_processes(self) -> None:
-        _caddy_deregister()
+        caddy_deregister()
         if self._main and self._main.poll() is None:
             if sys.platform == "win32":
                 subprocess.run(
