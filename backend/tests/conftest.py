@@ -5,24 +5,61 @@ from unittest.mock import patch
 import pytest
 from alembic import command
 from alembic.config import Config
+from dotenv import dotenv_values
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import sessionmaker
 
-TEST_DATABASE_URL = os.getenv(
-    "TEST_DATABASE_URL",
-    "postgresql://postgres:postgres@localhost:5432/recipe_test",
-)
-
 BACKEND_DIR = Path(__file__).resolve().parent.parent
+
+
+# ai: claude-opus-5-5 | 2026-11-11
+def _resolve_test_database_url() -> str:
+    """TEST_DATABASE_URL wins if set; otherwise build it from POSTGRES_TEST_* vars.
+
+    Only the POSTGRES_TEST_* keys are read from backend/.env (dotenv_values does
+    not touch os.environ), so the real app credentials never enter the test process.
+    """
+    explicit = os.getenv("TEST_DATABASE_URL")
+    if explicit:
+        return explicit
+
+    env_file = {
+        k: v for k, v in dotenv_values(BACKEND_DIR / ".env").items()
+        if k.startswith("POSTGRES_TEST_")
+    }
+
+    def _get(key: str) -> str | None:
+        return os.getenv(key) or env_file.get(key)
+
+    host, db, user = _get("POSTGRES_TEST_HOST"), _get("POSTGRES_TEST_DB"), _get("POSTGRES_TEST_USER")
+    if not all([host, db, user]):
+        raise RuntimeError(
+            "No test database configured. Set TEST_DATABASE_URL, or POSTGRES_TEST_HOST, "
+            "POSTGRES_TEST_DB, POSTGRES_TEST_USER (and optionally _PASSWORD, _PORT, "
+            "_SSLMODE) in the environment or backend/.env."
+        )
+    sslmode = _get("POSTGRES_TEST_SSLMODE")
+    return URL.create(
+        "postgresql",
+        username=user,
+        password=_get("POSTGRES_TEST_PASSWORD"),
+        host=host,
+        port=int(_get("POSTGRES_TEST_PORT") or 5432),
+        database=db,
+        query={"sslmode": sslmode} if sslmode else {},
+    ).render_as_string(hide_password=False)
+
+
+TEST_DATABASE_URL = _resolve_test_database_url()
 
 
 # ai: claude-opus-5-5 | 2026-11-11
 # The session fixture drops the whole `public` schema and teardown deletes every
 # row, so refuse to run against anything that isn't clearly a throwaway test DB.
 _test_db_name = make_url(TEST_DATABASE_URL).database or ""
-if not _test_db_name.endswith("_test"):
+if not _test_db_name.lower().endswith("_test"):
     raise RuntimeError(
         f"Refusing to run tests against database '{_test_db_name}': "
         "TEST_DATABASE_URL must name a database ending in '_test'."

@@ -54,6 +54,18 @@ POSTGRES_USER=user
 POSTGRES_PASSWORD=password
 POSTGRES_SSLMODE=prefer
 
+# Test database (pytest only; read by tests/conftest.py, never by the app).
+# The DB name must end in _test — the suite drops and rebuilds its schema each run.
+# The user must own the database, e.g. as postgres:
+#   CREATE USER recipe_test_app WITH PASSWORD '...';
+#   CREATE DATABASE recipe_test OWNER recipe_test_app;
+#POSTGRES_TEST_HOST=localhost
+#POSTGRES_TEST_PORT=5432
+#POSTGRES_TEST_DB=recipe_test
+#POSTGRES_TEST_USER=recipe_test_app
+#POSTGRES_TEST_PASSWORD=password
+#POSTGRES_TEST_SSLMODE=prefer
+
 # Anthropic
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
 
