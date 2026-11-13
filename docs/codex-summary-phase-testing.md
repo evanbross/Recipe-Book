@@ -1,5 +1,10 @@
 # Codex Summary: Phase Testing
 
+> **Status (2026-11-13):** historical record. The PostgreSQL authentication failure
+> described under *Verification Run* was resolved when the test DB URL moved to the
+> `POSTGRES_TEST_*` settings (commit `ea0657c`); the suite now runs green. See the
+> README's *Running Tests* section for current setup.
+
 ## Implemented Files
 
 Created exactly the files requested by the phase spec:

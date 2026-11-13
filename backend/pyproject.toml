@@ -34,6 +34,9 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# ai: claude-opus-5-5 | 2026-11-13
+# Put backend/ on sys.path so a bare `pytest` resolves `app` like `python -m pytest` does.
+pythonpath = ["."]
 norecursedirs = ["tmp", ".venv", "backups", "__pycache__"]
 
 [tool.uv]

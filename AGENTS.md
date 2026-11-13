@@ -8,6 +8,7 @@ making any changes.
 - `../Dev-Standards/COMMON_CODING_STANDARDS.md`
 - `../Dev-Standards/PYTHON_STANDARDS.md`
 - `../Dev-Standards/DATABASE_STANDARDS.md`
+- `../Dev-Standards/JAVASCRIPT_TYPESCRIPT_STANDARDS.md`
 - `../Dev-Standards/REACT_STANDARDS.md`
 - `../Dev-Standards/FASTAPI_STANDARDS.md`
 - `../Dev-Standards/TESTING_STANDARDS.md`
@@ -23,30 +24,54 @@ making any changes.
 
 FastAPI backend (`backend/app/`) + React/Vite frontend (`frontend/src/`).
 PostgreSQL via SQLAlchemy 2.0; migrations managed by Alembic.
-Images stored in Cloudflare R2 (S3-compatible). Recipe extraction powered by the
-Anthropic Claude API (vision + text). Local dev runs via Docker Compose.
+Images stored in **MinIO** (S3-compatible, served by the sibling `../infra` stack).
+Cloudflare R2 is a possible future target only — it is not wired up; do not write R2
+code unless asked. Recipe extraction powered by the Anthropic Claude API (vision + text).
+Recipes can also be harvested from Gmail newsletters and from a Tampermonkey userscript.
+
+Local dev runs via the root `main.py` (picks free ports, starts uvicorn + Vite, registers
+routes with Caddy at `http://recipe-app.localhost`). `docker-compose.yml` is not
+maintained — see README.
 
 Key files:
 
 **Backend**
-- `backend/app/main.py` — FastAPI app init, CORS middleware, router registration
-- `backend/app/config.py` — Pydantic Settings (DB, Anthropic, R2, CORS)
+- `backend/app/main.py` — FastAPI app, lifespan startup checks, router registration
+- `backend/app/config.py` — Pydantic Settings (DB, Anthropic, MinIO, CORS, capture listener, Gmail scan)
 - `backend/app/database/database.py` — SQLAlchemy engine and session factory (`get_db`)
-- `backend/app/database/schemas.py` — Pydantic request/response schemas
-- `backend/app/models/models.py` — ORM models: Recipe, Tag, TagCategory, recipe_tags join table
-- `backend/app/routes/recipes.py` — Recipe CRUD endpoints
-- `backend/app/routes/tags.py` — Tag and category endpoints
-- `backend/app/routes/capture.py` — URL and image ingestion (`POST /capture/url`, `/capture/image`)
-- `backend/app/routes/search.py` — Full-text + tag-filter search (PostgreSQL TSVECTOR)
-- `backend/app/services/vision.py` — Claude API calls for structured recipe extraction
-- `backend/app/services/scraper.py` — httpx + BeautifulSoup web page fetching
-- `backend/app/services/storage.py` — R2 upload via boto3; generates originals + thumbnails
+- `backend/app/schemas.py` — Pydantic request/response schemas (the only schemas module)
+- `backend/app/models/models.py` — ORM models: Recipe, Tag, TagCategory, ScannedEmail,
+  EmailRecipeCandidate, RecipeImageCandidate, EmailImagePreference, WatchedSite, AppSetting
+- `backend/app/routes/recipes.py` — Recipe CRUD (`/recipes`)
+- `backend/app/routes/tags.py` — Tags, categories, Claude tag suggestions (`/tags`)
+- `backend/app/routes/capture.py` — URL / image / link-scan ingestion (`/capture`)
+- `backend/app/routes/search.py` — Full-text + tag-filter search, PostgreSQL TSVECTOR (`/search`)
+- `backend/app/routes/email_scan.py` — Gmail OAuth, scan control, settings, candidate review (`/email`)
+- `backend/app/routes/watchlist.py` — Sites to revisit on a schedule (`/watchlist`)
+- `backend/app/services/vision.py` — Claude extraction from images or page text
+- `backend/app/services/scraper.py` — httpx + BeautifulSoup page fetching
+- `backend/app/services/sources.py` — Derives source tags from recipe URLs
+- `backend/app/services/tagger.py` — Claude tag suggestions
+- `backend/app/services/storage.py` — MinIO upload/delete via boto3; originals + thumbnails
+- `backend/app/services/gmail_client.py` — Gmail API; raises `NotAuthenticatedError`, never starts OAuth
+- `backend/app/services/email_link_extractor.py` — Heuristics for recipe URLs in email HTML
+- `backend/app/services/recipe_email_parser.py` — Claude (Haiku) extraction from email bodies
+- `backend/app/services/image_candidates.py` — Image scoring + per-sender image preference learning
+- `backend/app/services/capture_listener.py` — Localhost HTTP listener for the Tampermonkey userscript
+- `backend/scripts/backup_minio.py` — MinIO backup / restore to any S3-compatible store
+- `backend/credentials/` — OAuth credentials and tokens; everything here is git-ignored
 
 **Frontend**
 - `frontend/src/App.jsx` — React Router v6 route definitions
 - `frontend/src/api/client.js` — Axios instance (proxied to backend at `/api`)
-- `frontend/src/pages/` — Home, RecipeDetail, AddRecipe, Search
-- `frontend/src/components/` — Layout, RecipeCard, TagPicker
+- `frontend/src/pages/` — Home, RecipeDetail, AddRecipe, Search, Settings
+- `frontend/src/components/` — Layout, RecipeCard, TagPicker, TagFilter, TagCategorizeDialog,
+  EmailScanTab, ImagePickerDialog, WatchlistAlert
+
+**Other**
+- `tampermonkey/recipe-capture.user.js` — Userscript that posts pages to the capture listener
+- `launcher.py` — Tkinter GUI wrapper around `main.py`
 
 **Tests**
-- `backend/tests/conftest.py` — pytest fixtures: DB session, TestClient, make_recipe/tag/category factories
+- `backend/tests/conftest.py` — pytest fixtures: real Postgres test DB (built from
+  `POSTGRES_TEST_*` settings), TestClient, make_recipe/tag/category factories
