@@ -43,10 +43,17 @@ import re
 from datetime import datetime, UTC
 from urllib.parse import urlparse
 
+import httpx
+from botocore.exceptions import BotoCoreError, ClientError
 from bs4 import BeautifulSoup
+from PIL import Image
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app import models
+from app.services import scraper as scraper_svc
+from app.services import storage as storage_svc
 
 logger = logging.getLogger(__name__)
 
@@ -169,27 +176,28 @@ def update_preference(db: Session, sender_domain: str, selected_url: str, select
     if not sender_domain:
         return
 
-    img_domain = _url_domain(selected_url)
-
-    pref = (
-        db.query(models.EmailImagePreference)
-        .filter(models.EmailImagePreference.sender_domain == sender_domain)
-        .first()
+    # ai: claude-opus-5-5 | 2026-11-13
+    # One atomic INSERT ... ON CONFLICT: a SELECT-then-INSERT would let two quick
+    # picks for a new sender both insert and hit the sender_domain unique constraint.
+    pref_table = models.EmailImagePreference.__table__
+    now = datetime.now(UTC)
+    stmt = pg_insert(pref_table).values(
+        sender_domain=sender_domain,
+        url_domain=_url_domain(selected_url),
+        preferred_rank=selected_rank,
+        selection_count=1,
+        last_used_at=now,
     )
-    if pref:
-        pref.url_domain = img_domain
-        pref.preferred_rank = selected_rank
-        pref.selection_count += 1
-        pref.last_used_at = datetime.now(UTC)
-    else:
-        db.add(models.EmailImagePreference(
-            sender_domain=sender_domain,
-            url_domain=img_domain,
-            preferred_rank=selected_rank,
-            selection_count=1,
-            last_used_at=datetime.now(UTC),
-        ))
-
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[pref_table.c.sender_domain],
+        set_={
+            "url_domain": stmt.excluded.url_domain,
+            "preferred_rank": stmt.excluded.preferred_rank,
+            "selection_count": pref_table.c.selection_count + 1,
+            "last_used_at": now,
+        },
+    )
+    db.execute(stmt)
     db.commit()
 
 
@@ -206,11 +214,10 @@ def _gather_candidates(html_body: str) -> list[tuple[str, int]]:
     source_url = _extract_source_url(html_body)
     if source_url:
         try:
-            from app.services import scraper as scraper_svc
             _, og_image_url, _, _ = scraper_svc.fetch_page(source_url)
             if og_image_url:
                 scored[og_image_url] = 92
-        except Exception as exc:
+        except (httpx.HTTPError, ValueError) as exc:  # ai: claude-opus-5-5 | 2026-11-13 — ValueError covers UnsafeURLError
             logger.warning("Failed to fetch source URL %s for image extraction: %s", source_url, exc)
 
     # Email HTML images
@@ -226,10 +233,7 @@ def _gather_candidates(html_body: str) -> list[tuple[str, int]]:
 
 def _extract_source_url(html: str) -> str | None:
     """Find the most likely 'view recipe' link in the email HTML."""
-    try:
-        soup = BeautifulSoup(html, "html.parser")
-    except Exception:
-        return None
+    soup = BeautifulSoup(html, "html.parser")  # ai: claude-opus-5-5 | 2026-11-13 — html.parser tolerates any str
 
     for a in soup.find_all("a", href=True):
         href: str = a.get("href", "")
@@ -249,10 +253,7 @@ def _extract_source_url(html: str) -> str | None:
 
 def _extract_email_images(html: str) -> list[tuple[str, int]]:
     """Extract and score <img> tags from email HTML. Returns [(url, score)]."""
-    try:
-        soup = BeautifulSoup(html, "html.parser")
-    except Exception:
-        return []
+    soup = BeautifulSoup(html, "html.parser")  # ai: claude-opus-5-5 | 2026-11-13 — html.parser tolerates any str
 
     results: list[tuple[str, int]] = []
 
@@ -310,9 +311,6 @@ def _apply_image_to_recipe(
     candidate: models.RecipeImageCandidate,
 ) -> bool:
     """Download candidate image, upload to MinIO, update recipe. Returns True on success."""
-    from app.services import scraper as scraper_svc
-    from app.services import storage as storage_svc
-
     try:
         img_bytes, content_type = scraper_svc.fetch_page_image(candidate.image_url)
         stored = storage_svc.upload_image(
@@ -323,7 +321,10 @@ def _apply_image_to_recipe(
                 "recipe-title": recipe.title[:512],
             },
         )
-    except Exception as exc:
+    # ai: claude-opus-5-5 | 2026-11-13
+    # Network / URL-guard (ValueError) / image decode (OSError, decompression bomb) / MinIO.
+    except (httpx.HTTPError, ValueError, OSError, Image.DecompressionBombError,
+            BotoCoreError, ClientError) as exc:
         logger.warning(
             "Auto-apply image download failed for recipe %d (%s): %s",
             recipe.id, candidate.image_url, exc,
@@ -338,14 +339,18 @@ def _apply_image_to_recipe(
         recipe.image_pending = False
         candidate.selected = True
         db.commit()
-        storage_svc.tag_objects_with_recipe_id(
-            stored["image_key"], stored.get("thumbnail_key"), recipe.id
-        )
-        return True
-    except Exception as exc:
+    # ai: claude-opus-5-5 | 2026-11-13
+    except SQLAlchemyError as exc:
         logger.warning("Auto-apply DB update failed for recipe %d: %s", recipe.id, exc)
         db.rollback()
         return False
+
+    # Tagging logs and swallows its own S3 errors, so it runs after the commit
+    # without being able to turn a saved image into a reported failure.
+    storage_svc.tag_objects_with_recipe_id(
+        stored["image_key"], stored.get("thumbnail_key"), recipe.id
+    )
+    return True
 
 
 def _extract_sender_domain(sender: str) -> str:
@@ -356,7 +361,7 @@ def _extract_sender_domain(sender: str) -> str:
 def _url_domain(url: str) -> str:
     try:
         return urlparse(url).netloc.lower()
-    except Exception:
+    except ValueError:  # ai: claude-opus-5-5 | 2026-11-13 — e.g. malformed IPv6 netloc
         return ""
 
 

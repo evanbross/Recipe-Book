@@ -37,9 +37,11 @@ import json
 import logging
 
 import anthropic
+from pydantic import ValidationError
 
 from app.config import settings
 from app.schemas import CaptureResult
+from app.services.claude_json import parse_json_reply
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +79,43 @@ mentions food without providing ingredients/instructions is NOT a recipe.
 """.strip()
 
 
+# ai: claude-opus-5-5 | 2026-11-13
+def _to_capture_result(raw: str, fallback_title: str, source: str) -> CaptureResult | None:
+    """Turn Claude's reply into a CaptureResult, or None if it holds no usable recipe.
+
+    Shared by the page and email paths so their parsing rules cannot drift apart.
+    """
+    try:
+        data = parse_json_reply(raw)
+    except json.JSONDecodeError as exc:
+        logger.warning("Claude returned non-JSON for %s: %s — raw: %s", source, exc, raw[:200])
+        return None
+
+    if not isinstance(data, dict) or not data.get("has_recipe"):
+        return None
+
+    data.pop("has_recipe", None)
+    if not data.get("title"):
+        data["title"] = fallback_title
+
+    try:
+        return CaptureResult(**data)
+    except ValidationError as exc:
+        logger.warning("Failed to build CaptureResult for %s: %s", source, exc)
+        return None
+
+
+# ai: claude-opus-5-5 | 2026-11-13
+def _request_extraction(user_content: str) -> str:
+    """Send the extraction prompt plus content to Haiku and return the reply text."""
+    response = _client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=2048,
+        messages=[{"role": "user", "content": f"{_PROMPT}\n\n{user_content}"}],
+    )
+    return response.content[0].text
+
+
 def parse_recipe_from_page(url: str, page_text: str) -> CaptureResult | None:
     """
     Extract a recipe from scraped web page text using Haiku.
@@ -87,47 +126,17 @@ def parse_recipe_from_page(url: str, page_text: str) -> CaptureResult | None:
     """
     content = f"Source URL: {url}\n\n{page_text[:_MAX_BODY_CHARS]}"
 
+    # ai: claude-opus-5-5 | 2026-11-13
     try:
-        response = _client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=2048,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"{_PROMPT}\n\nWeb page content:\n{content}",
-                }
-            ],
-        )
-    except (anthropic.APIError, anthropic.APIConnectionError, anthropic.RateLimitError) as exc:
+        raw = _request_extraction(f"Web page content:\n{content}")
+    except anthropic.APIError as exc:
         logger.warning("Claude API error parsing linked page %r: %s", url, exc)
         raise
 
-    raw = response.content[0].text.strip()
-    clean = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-
-    try:
-        data = json.loads(clean)
-    except json.JSONDecodeError as exc:
-        logger.warning(
-            "Claude returned non-JSON for page %r: %s — raw: %s", url, exc, raw[:200]
-        )
-        return None
-
-    if not data.get("has_recipe"):
-        return None
-
-    data.pop("has_recipe", None)
-
-    if not data.get("title"):
-        # Fall back to slug-derived title from the URL
-        slug = url.rstrip("/").split("/")[-1]
-        data["title"] = slug.replace("-", " ").replace("_", " ").title() or "Recipe"
-
-    try:
-        return CaptureResult(**data)
-    except Exception as exc:
-        logger.warning("Failed to build CaptureResult for page %r: %s", url, exc)
-        return None
+    # Fall back to a slug-derived title from the URL.
+    slug = url.rstrip("/").split("/")[-1]
+    fallback_title = slug.replace("-", " ").replace("_", " ").title() or "Recipe"
+    return _to_capture_result(raw, fallback_title, f"page {url!r}")
 
 
 def parse_recipe_from_email(
@@ -141,41 +150,11 @@ def parse_recipe_from_email(
     """
     email_text = f"From: {sender}\nSubject: {subject}\n\n{body[:_MAX_BODY_CHARS]}"
 
+    # ai: claude-opus-5-5 | 2026-11-13
     try:
-        response = _client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=2048,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"{_PROMPT}\n\nEmail:\n{email_text}",
-                }
-            ],
-        )
-    except (anthropic.APIError, anthropic.APIConnectionError, anthropic.RateLimitError) as exc:
+        raw = _request_extraction(f"Email:\n{email_text}")
+    except anthropic.APIError as exc:
         logger.warning("Claude API error parsing email %r: %s", subject, exc)
         raise
 
-    raw = response.content[0].text.strip()
-    clean = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-
-    try:
-        data = json.loads(clean)
-    except json.JSONDecodeError as exc:
-        logger.warning("Claude returned non-JSON for email %r: %s — raw: %s", subject, exc, raw[:200])
-        return None
-
-    if not data.get("has_recipe"):
-        return None
-
-    data.pop("has_recipe", None)
-
-    # Ensure title is never None — fall back to subject or a generic label.
-    if not data.get("title"):
-        data["title"] = subject or "Recipe from Email"
-
-    try:
-        return CaptureResult(**data)
-    except Exception as exc:
-        logger.warning("Failed to build CaptureResult for email %r: %s", subject, exc)
-        return None
+    return _to_capture_result(raw, subject or "Recipe from Email", f"email {subject!r}")

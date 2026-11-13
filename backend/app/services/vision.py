@@ -3,13 +3,12 @@ Vision service: uses Claude API to extract structured recipe data
 from images (photos, scans) or raw web page text.
 """
 import base64
-import json
 import logging
 import re
-from typing import Optional
 import anthropic
 from app.config import settings
 from app.schemas import CaptureResult
+from app.services.claude_json import parse_json_reply
 
 logger = logging.getLogger(__name__)
 client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
@@ -103,8 +102,7 @@ def extract_from_jsonld(recipe_data: dict) -> CaptureResult:
 
 def _parse_claude_response(text: str) -> CaptureResult:
     """Parse Claude's JSON response into a CaptureResult."""
-    clean = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    data = json.loads(clean)
+    data = parse_json_reply(text)  # ai: claude-opus-5-5 | 2026-11-13
     data["title"] = data.get("title") or "Untitled Recipe"
     return CaptureResult(**data)
 
