@@ -92,8 +92,9 @@ def test_missing_site_returns_404(client, method, path):
     assert getattr(client, method)(path, **kwargs).status_code == 404
 
 
-def test_zero_day_interval_is_currently_accepted(client):
-    # Documents current behaviour: no lower bound on check_every_days, so a
-    # 0-day site is permanently due. Change this test if validation is added.
-    res = client.post("/watchlist", json={"name": "x", "url": "https://x.com", "check_every_days": 0})
-    assert res.status_code == 201
+@pytest.mark.parametrize("days", [0, -3])
+def test_non_positive_interval_is_rejected(client, make_site, days):
+    res = client.post("/watchlist", json={"name": "x", "url": "https://x.com", "check_every_days": days})
+    assert res.status_code == 422
+    site = make_site()
+    assert client.patch(f"/watchlist/{site.id}", json={"check_every_days": days}).status_code == 422
