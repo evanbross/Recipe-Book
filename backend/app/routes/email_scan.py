@@ -509,7 +509,7 @@ def _scrape_linked_recipes(
     log_entry: dict[str, Any],
 ) -> int:
     """
-    Fetch each URL, extract its recipe via Claude Haiku, and create a Recipe or
+    Fetch each URL, extract its recipe via Claude, and create a Recipe or
     Candidate row.  Returns the number of recipes successfully imported/queued.
 
     This is called when an email contains "Get Recipe" links but no inline recipe

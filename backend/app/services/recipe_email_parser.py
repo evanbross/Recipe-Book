@@ -28,8 +28,8 @@
 """
 Recipe extraction from email content via Claude.
 
-Uses claude-haiku for cost efficiency since hundreds of emails may be processed
-in a single scan session. Returns None if the email contains no recipe.
+Uses the configured CLAUDE_MODEL via services/claude_client. Returns None if the
+email contains no recipe.
 """
 from __future__ import annotations
 
@@ -39,13 +39,11 @@ import logging
 import anthropic
 from pydantic import ValidationError
 
-from app.config import settings
 from app.schemas import CaptureResult
+from app.services.claude_client import request_text
 from app.services.claude_json import parse_json_reply
 
 logger = logging.getLogger(__name__)
-
-_client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
 # Max body chars sent to Claude. Recipe emails are typically longer than web
 # pages (full recipe + newsletter fluff), so allow more than the scraper's 8k.
@@ -107,22 +105,16 @@ def _to_capture_result(raw: str, fallback_title: str, source: str) -> CaptureRes
 
 # ai: claude-opus-5-5 | 2026-11-13
 def _request_extraction(user_content: str) -> str:
-    """Send the extraction prompt plus content to Haiku and return the reply text."""
-    response = _client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=2048,
-        messages=[{"role": "user", "content": f"{_PROMPT}\n\n{user_content}"}],
-    )
-    return response.content[0].text
+    """Send the extraction prompt plus content to Claude and return the reply text."""
+    return request_text(f"{_PROMPT}\n\n{user_content}")
 
 
 def parse_recipe_from_page(url: str, page_text: str) -> CaptureResult | None:
     """
-    Extract a recipe from scraped web page text using Haiku.
+    Extract a recipe from scraped web page text.
 
     Called when an email contains "Get Recipe" links rather than embedding the
-    full recipe inline.  Uses the same Haiku model as parse_recipe_from_email
-    to keep batch-scan costs predictable.
+    full recipe inline.
     """
     content = f"Source URL: {url}\n\n{page_text[:_MAX_BODY_CHARS]}"
 

@@ -48,6 +48,7 @@ Key files:
 - `backend/app/routes/search.py` — Full-text + tag-filter search, PostgreSQL TSVECTOR (`/search`)
 - `backend/app/routes/email_scan.py` — Gmail OAuth, scan control, settings, candidate review (`/email`)
 - `backend/app/routes/watchlist.py` — Sites to revisit on a schedule (`/watchlist`)
+- `backend/app/services/claude_client.py` — the only Claude caller: `CLAUDE_MODEL` setting, refusal fallbacks, text-block extraction
 - `backend/app/services/vision.py` — Claude extraction from images or page text
 - `backend/app/services/scraper.py` — httpx + BeautifulSoup page fetching
 - `backend/app/services/sources.py` — Derives source tags from recipe URLs
@@ -55,7 +56,7 @@ Key files:
 - `backend/app/services/storage.py` — MinIO upload/delete via boto3; originals + thumbnails
 - `backend/app/services/gmail_client.py` — Gmail API; raises `NotAuthenticatedError`, never starts OAuth
 - `backend/app/services/email_link_extractor.py` — Heuristics for recipe URLs in email HTML
-- `backend/app/services/recipe_email_parser.py` — Claude (Haiku) extraction from email bodies
+- `backend/app/services/recipe_email_parser.py` — Claude extraction from email bodies
 - `backend/app/services/image_candidates.py` — Image scoring + per-sender image preference learning
 - `backend/app/services/capture_listener.py` — Localhost HTTP listener for the Tampermonkey userscript
 - `backend/scripts/backup_minio.py` — MinIO backup / restore to any S3-compatible store

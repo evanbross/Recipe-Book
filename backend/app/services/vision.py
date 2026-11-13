@@ -5,13 +5,11 @@ from images (photos, scans) or raw web page text.
 import base64
 import logging
 import re
-import anthropic
-from app.config import settings
 from app.schemas import CaptureResult
+from app.services.claude_client import request_text
 from app.services.claude_json import parse_json_reply
 
 logger = logging.getLogger(__name__)
-client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
 EXTRACTION_PROMPT = """
 You are a recipe extraction assistant. Extract the recipe from the provided content and return
@@ -115,36 +113,21 @@ def extract_from_image_bytes(image_bytes: bytes, media_type: str = "image/jpeg")
     logger.info("[vision] Calling Claude vision for image (%s, %d bytes)", media_type, len(image_bytes))
     b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
 
+    # ai: claude-opus-5-5 | 2026-11-13
     try:
-        response = client.messages.create(
-            model="claude-opus-4-5",
-            max_tokens=2048,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": media_type,
-                                "data": b64,
-                            },
-                        },
-                        {
-                            "type": "text",
-                            "text": EXTRACTION_PROMPT,
-                        },
-                    ],
-                }
-            ],
-        )
+        reply = request_text([
+            {
+                "type": "image",
+                "source": {"type": "base64", "media_type": media_type, "data": b64},
+            },
+            {"type": "text", "text": EXTRACTION_PROMPT},
+        ])
     except Exception as exc:
         logger.error("[vision] Claude vision API failed: %s", exc)
         raise
 
     try:
-        result = _parse_claude_response(response.content[0].text)
+        result = _parse_claude_response(reply)
     except Exception as exc:
         logger.error("[vision] Failed to parse Claude response: %s", exc)
         raise
@@ -158,23 +141,15 @@ def extract_from_text(page_text: str) -> CaptureResult:
     Extract recipe from raw text (scraped web page content).
     """
     logger.info("[vision] Calling Claude text extraction (%d chars)", len(page_text))
+    # ai: claude-opus-5-5 | 2026-11-13
     try:
-        response = client.messages.create(
-            model="claude-opus-4-5",
-            max_tokens=2048,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"{EXTRACTION_PROMPT}\n\nContent to extract from:\n\n{page_text[:8000]}",
-                }
-            ],
-        )
+        reply = request_text(f"{EXTRACTION_PROMPT}\n\nContent to extract from:\n\n{page_text[:8000]}")
     except Exception as exc:
         logger.error("[vision] Claude text extraction API failed: %s", exc)
         raise
 
     try:
-        result = _parse_claude_response(response.content[0].text)
+        result = _parse_claude_response(reply)
     except Exception as exc:
         logger.error("[vision] Failed to parse Claude response: %s", exc)
         raise
