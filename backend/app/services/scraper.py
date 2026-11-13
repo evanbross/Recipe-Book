@@ -8,6 +8,8 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 from urllib.parse import urljoin, urlparse
 
+from app.services.url_guard import check_public_destination
+
 logger = logging.getLogger(__name__)
 
 
@@ -18,6 +20,27 @@ _HEADERS = {
         "Chrome/124.0.0.0 Safari/537.36"
     )
 }
+
+# ai: claude-opus-5-5 | 2026-11-13
+def _reject_non_public(request: httpx.Request) -> None:
+    """httpx request hook: runs before the first request and before every redirect hop."""
+    check_public_destination(str(request.url))
+
+
+# ai: claude-opus-5-5 | 2026-11-13
+def _guarded_client(timeout: int) -> httpx.Client:
+    """The only way this module makes HTTP requests: SSRF-checked on every hop.
+
+    Raises url_guard.UnsafeURLError (a ValueError) when a URL or redirect points
+    at a non-public address.
+    """
+    return httpx.Client(
+        headers=_HEADERS,
+        follow_redirects=True,
+        timeout=timeout,
+        event_hooks={"request": [_reject_non_public]},
+    )
+
 
 _REMOVE_TAGS = {"script", "style", "nav", "footer", "header", "aside", "form", "iframe"}
 
@@ -181,7 +204,7 @@ def fetch_page(url: str, timeout: int = 15) -> tuple[str, str | None, str, dict 
     resolved to an absolute URL.
     """
     logger.info("[scraper] Fetching page: %s", url)
-    with httpx.Client(headers=_HEADERS, follow_redirects=True, timeout=timeout) as client:
+    with _guarded_client(timeout) as client:
         response = client.get(url)
         try:
             response.raise_for_status()
@@ -227,7 +250,7 @@ def fetch_page_text(url: str, timeout: int = 15) -> str:
 def fetch_page_html(url: str, timeout: int = 15) -> tuple[str, str]:
     """Fetch a web page and return (raw_html, final_url). Used for link extraction."""
     logger.info("[scraper] Fetching HTML: %s", url)
-    with httpx.Client(headers=_HEADERS, follow_redirects=True, timeout=timeout) as client:
+    with _guarded_client(timeout) as client:
         response = client.get(url)
         try:
             response.raise_for_status()
@@ -284,7 +307,7 @@ def fetch_page_image(url: str, timeout: int = 15) -> tuple[bytes, str]:
     Used when the user provides a direct image URL rather than a page URL.
     """
     logger.info("[scraper] Fetching image: %s", url)
-    with httpx.Client(headers=_HEADERS, follow_redirects=True, timeout=timeout) as client:
+    with _guarded_client(timeout) as client:
         response = client.get(url)
         try:
             response.raise_for_status()
