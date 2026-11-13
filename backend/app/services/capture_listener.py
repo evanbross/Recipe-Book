@@ -53,10 +53,19 @@ class _RequestParser:
         self._max_bytes = max(1, max_bytes)
 
     def parse(
-        self, *, path: str, raw_body: bytes
+        self, *, path: str, content_type: str, raw_body: bytes
     ) -> tuple[dict[str, Any] | None, str, int]:
         if urlparse(path).path not in _ALLOWED_PATHS:
             return None, "Unknown path.", HTTPStatus.NOT_FOUND
+
+        # ai: claude-opus-5-5 | 2026-11-13
+        # CSRF guard. Any web page can POST text/plain to 127.0.0.1 without a CORS
+        # preflight, so a body parsed as JSON regardless of type would let every
+        # site you visit trigger captures. application/json forces a preflight,
+        # which this listener never answers. Tampermonkey's GM_xmlhttpRequest is
+        # exempt from CORS and sends application/json, so the userscript still works.
+        if content_type.split(";", 1)[0].strip().lower() != "application/json":
+            return None, "Content-Type must be application/json.", HTTPStatus.UNSUPPORTED_MEDIA_TYPE
 
         if len(raw_body) > self._max_bytes:
             return None, "Request body too large.", HTTPStatus.REQUEST_ENTITY_TOO_LARGE
@@ -127,7 +136,11 @@ class CaptureListener:
                     return
 
                 raw_body = self.rfile.read(content_length)
-                body, error, status = parser.parse(path=self.path, raw_body=raw_body)
+                body, error, status = parser.parse(
+                    path=self.path,
+                    content_type=self.headers.get("Content-Type") or "",  # ai: claude-opus-5-5 | 2026-11-13
+                    raw_body=raw_body,
+                )
                 if error:
                     self._send_json({"error": error}, status)
                     return
@@ -154,6 +167,14 @@ class CaptureListener:
             self._host,
             self._port,
         )
+
+    # ai: claude-opus-5-5 | 2026-11-13
+    @property
+    def port(self) -> int:
+        """The bound port (differs from the requested one when started with port 0)."""
+        if self._server is None:
+            raise RuntimeError("Capture listener is not running.")
+        return self._server.server_address[1]
 
     def stop(self) -> None:
         if self._server is None:
