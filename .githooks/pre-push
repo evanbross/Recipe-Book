@@ -1,0 +1,59 @@
+#!/bin/sh
+# Copyright (c) 2026 ZombieTech LLC. All rights reserved.
+# SPDX-License-Identifier: PolyForm-Strict-1.0.0
+# See LICENSE in the project root for the full terms.
+#
+# ai: claude-opus-5-5 | 2026-11-14
+# Local quality gate (this project has no hosted CI). Runs the checks for the
+# parts of the repo this push changes:
+#   backend/   -> uv run pytest -q      (needs the POSTGRES_TEST_* database up)
+#   frontend/  -> npm run lint && npm run build
+# Enable once per clone:     git config core.hooksPath .githooks
+# Skip for a single push:    git push --no-verify
+#
+# Checks run against the working tree, which may differ from what is pushed if
+# there are uncommitted changes; a warning is printed in that case.
+
+set -e
+zero=0000000000000000000000000000000000000000
+repo_root=$(git rev-parse --show-toplevel)
+
+changed=""
+# git feeds one line per ref being pushed: <local ref> <local sha> <remote ref> <remote sha>
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [ "$local_sha" = "$zero" ] && continue          # deleting a remote branch
+    if [ "$remote_sha" = "$zero" ]; then
+        # New branch: compare against where it forked from the remote's main.
+        base=$(git merge-base "$local_sha" origin/main 2>/dev/null || true)
+        [ -z "$base" ] && { changed="backend/ frontend/"; continue; }
+    else
+        base=$remote_sha
+    fi
+    changed="$changed
+$(git diff --name-only "$base" "$local_sha")"
+done
+
+run_backend=no
+run_frontend=no
+echo "$changed" | grep -q '^backend/' && run_backend=yes
+echo "$changed" | grep -q '^frontend/' && run_frontend=yes
+
+if [ "$run_backend" = no ] && [ "$run_frontend" = no ]; then
+    exit 0
+fi
+
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+    echo "pre-push: warning: uncommitted changes; checking the working tree, not the pushed commits"
+fi
+
+if [ "$run_frontend" = yes ]; then
+    echo "pre-push: frontend lint + build"
+    (cd "$repo_root/frontend" && npm run --silent lint && npm run --silent build >/dev/null)
+fi
+
+if [ "$run_backend" = yes ]; then
+    echo "pre-push: backend tests"
+    (cd "$repo_root/backend" && uv run --frozen pytest -q)
+fi
+
+echo "pre-push: all checks passed"

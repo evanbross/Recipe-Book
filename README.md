@@ -144,6 +144,17 @@ a model change without a matching migration (or vice versa) can't slip through. 
 - Only the `POSTGRES_TEST_*` keys are read from `.env`, so the real API keys and the
   main database never reach the test process.
 
+### Pre-push gate
+
+There's no hosted CI. Instead, `.githooks/pre-push` runs the backend tests and/or the
+frontend lint + build, depending on what the push changes. Enable it once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Skip it for one push with `git push --no-verify` (e.g. when the test database is down).
+
 ### Frontend checks
 
 There are no frontend tests; lint and the production build are the checks. Run both

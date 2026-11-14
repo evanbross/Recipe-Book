@@ -1,0 +1,3 @@
+# ai: claude-opus-5-5 | 2026-11-14
+# Hook scripts run under sh; CRLF breaks them on autocrlf=true clones.
+.githooks/* text eol=lf
