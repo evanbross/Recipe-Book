@@ -100,7 +100,7 @@ export default function TagCategorizeDialog({ recipe, onSave, onClose }) {
       qc.invalidateQueries({ queryKey: ['tags'] })
       setSelectedIds(prev => new Set([...prev, tag.id]))
     },
-    onError: () => toast.error('Failed to create tag'),
+    onError: (e) => toast.error(e?.response?.data?.detail || 'Failed to create tag'),  // ai: claude-opus-5-5 | 2026-11-14
   })
 
   const toggle = (id) => {
@@ -281,7 +281,7 @@ export default function TagCategorizeDialog({ recipe, onSave, onClose }) {
                 </div>
               )}
               {filtered.length === 0 && (
-                <p className={styles.empty}>No tags match "{search}"</p>
+                <p className={styles.empty}>No tags match &ldquo;{search}&rdquo;</p>
               )}
             </div>
           </div>

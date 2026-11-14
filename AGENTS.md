@@ -76,3 +76,7 @@ Key files:
 **Tests**
 - `backend/tests/conftest.py` — pytest fixtures: real Postgres test DB (built from
   `POSTGRES_TEST_*` settings), TestClient, make_recipe/tag/category factories
+- `backend/tests/test_schema.py` — fails if the models and the Alembic chain disagree;
+  every model change needs a migration
+- Full backend suite runs in ~10 s (`cd backend && uv run pytest`)
+- Frontend: no tests; `cd frontend && npm run lint && npm run build` after any `.jsx` edit

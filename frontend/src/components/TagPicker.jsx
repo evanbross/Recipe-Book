@@ -98,7 +98,7 @@ export default function TagPicker({ selectedIds = [], onChange }) {
           </div>
         )}
         {filtered.length === 0 && (
-          <p className={styles.empty}>No tags match "{filter}"</p>
+          <p className={styles.empty}>No tags match &ldquo;{filter}&rdquo;</p>
         )}
       </div>
     </div>

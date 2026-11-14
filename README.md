@@ -136,12 +136,24 @@ cd backend
 .venv/Scripts/python -m pytest
 ```
 
-Each session rebuilds the schema with `alembic upgrade head`, so the tests also confirm
-that the migration chain matches the models. Safety guards:
+Each session rebuilds the schema with `alembic upgrade head`, and `tests/test_schema.py`
+fails if autogenerate would find any difference between the models and that schema — so
+a model change without a matching migration (or vice versa) can't slip through. Safety guards:
 
 - The suite refuses to run unless the database name ends in `_test`.
 - Only the `POSTGRES_TEST_*` keys are read from `.env`, so the real API keys and the
   main database never reach the test process.
+
+### Frontend checks
+
+There are no frontend tests; lint and the production build are the checks. Run both
+after any `.jsx` change:
+
+```bash
+cd frontend
+npm run lint    # ESLint: no-undef, rules-of-hooks, React Compiler purity rules
+npm run build
+```
 
 ---
 

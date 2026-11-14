@@ -71,11 +71,20 @@ export default function EmailScanTab({ onRecipeImported }) {
   })
 
   // ── Scan polling ─────────────────────────────────────────────────────────
+  // ai: claude-opus-5-5 | 2026-11-14
+  // Opening the dialog here (not in an effect) also covers a page load while a
+  // scan is already running. The dialog can't be closed mid-scan, so repeating
+  // setDialogOpen(true) on every 2s poll is a no-op.
   const { data: scanStatus, refetch: refetchScanStatus } = useQuery({
     queryKey: ['emailScanStatus'],
-    queryFn: getEmailScanStatus,
+    queryFn: async () => {
+      const status = await getEmailScanStatus()
+      if (status.running) setDialogOpen(true)
+      return status
+    },
     refetchInterval: (query) => (query.state.data?.running ? 2000 : false),
   })
+  const scanRunning = scanStatus?.running
 
   const scanMutation = useMutation({
     mutationFn: startEmailScan,
@@ -86,19 +95,15 @@ export default function EmailScanTab({ onRecipeImported }) {
     onError: (e) => toast.error(e?.response?.data?.detail || 'Failed to start scan'),
   })
 
-  // Also open dialog if the page loads while a scan is already running.
-  useEffect(() => {
-    if (scanStatus?.running) setDialogOpen(true)
-  }, [scanStatus?.running])
-
   // Refresh candidates when a running scan completes.
+  // ai: claude-opus-5-5 | 2026-11-14
   const wasRunning = useRef(false)
   useEffect(() => {
-    if (wasRunning.current && scanStatus && !scanStatus.running) {
+    if (wasRunning.current && scanRunning === false) {
       qc.invalidateQueries({ queryKey: ['emailCandidates'] })
     }
-    wasRunning.current = scanStatus?.running ?? false
-  }, [scanStatus?.running, qc])
+    wasRunning.current = scanRunning ?? false
+  }, [scanRunning, qc])
 
   // ── Settings (read-only here; edit via Settings page) ────────────────────
   const { data: emailSettings } = useQuery({
@@ -282,22 +287,18 @@ function ScanProgressDialog({ scanStatus, autoImport, onClose, onViewReport }) {
 
   const pct = total > 0 ? Math.round((processed / total) * 100) : 0
 
-  // Live elapsed / ETA — tick every second while scanning.
-  const timerRef = useRef(null)
-  const [, setTick] = useState(0)
+  // ai: claude-opus-5-5 | 2026-11-14
+  // Live elapsed / ETA. "Now" lives in state, refreshed every second while
+  // scanning, so render stays pure (no Date.now() during render).
+  const [nowMs, setNowMs] = useState(() => Date.now())
   useEffect(() => {
-    if (!isRunning) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
-      return
-    }
-    clearInterval(timerRef.current)
-    timerRef.current = setInterval(() => setTick((t) => t + 1), 1000)
-    return () => clearInterval(timerRef.current)
+    if (!isRunning) return
+    const intervalId = setInterval(() => setNowMs(Date.now()), 1000)
+    return () => clearInterval(intervalId)
   }, [isRunning])
 
   const startMs = scanStatus.started_at ? new Date(scanStatus.started_at).getTime() : null
-  const elapsedMs = startMs ? Date.now() - startMs : null
+  const elapsedMs = startMs ? nowMs - startMs : null
   const rate = processed > 0 && elapsedMs > 0 ? processed / elapsedMs : 0
   const remainingMs = rate > 0 && total > processed ? (total - processed) / rate : null
 

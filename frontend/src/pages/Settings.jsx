@@ -68,15 +68,19 @@ export default function Settings() {
   const [maxPerFolder, setMaxPerFolder] = useState('50')
   const [settingsSaved, setSettingsSaved] = useState(false)
 
-  useEffect(() => {
-    if (emailSettings) {
-      setAutoImport(emailSettings.auto_import)
-      setLabels(emailSettings.labels?.length > 0 ? emailSettings.labels : ['Cooking'])
-      setScanInbox(emailSettings.scan_inbox ?? false)
-      setLookback(String(emailSettings.inbox_lookback_days))
-      setMaxPerFolder(String(emailSettings.max_per_folder ?? 50))
-    }
-  }, [emailSettings])
+  // ai: claude-opus-5-5 | 2026-11-14
+  // Re-sync the form whenever a new settings object arrives (initial load, or
+  // the refetch after a save). Adjusting state during render, keyed on the last
+  // synced object, is React's recommended alternative to a setState-in-effect.
+  const [syncedSettings, setSyncedSettings] = useState(null)
+  if (emailSettings && emailSettings !== syncedSettings) {
+    setSyncedSettings(emailSettings)
+    setAutoImport(emailSettings.auto_import)
+    setLabels(emailSettings.labels?.length > 0 ? emailSettings.labels : ['Cooking'])
+    setScanInbox(emailSettings.scan_inbox ?? false)
+    setLookback(String(emailSettings.inbox_lookback_days))
+    setMaxPerFolder(String(emailSettings.max_per_folder ?? 50))
+  }
 
   // Cancel the "Saved" flash timer on unmount
   useEffect(() => () => clearTimeout(savedTimerRef.current), [])
