@@ -1,12 +1,24 @@
+# ai: claude-opus-5-5 | 2026-11-14
+# Converted from legacy Column() to SQLAlchemy 2.x Mapped/mapped_column. Column
+# types are spelled out wherever the Python-type default would differ from the
+# migrated schema (Text vs VARCHAR, naive DateTime), so autogenerate stays clean.
 from datetime import datetime, timezone
+
 from sqlalchemy import (
-    Boolean, Column, Integer, String, Text, DateTime, ForeignKey, Table, Index
+    Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Table, Text,
+    UniqueConstraint,
 )
-from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.database import Base
 
-# Many-to-many join table: recipes <-> tags
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+# Many-to-many join table: recipes <-> tags. A Core Table, so it keeps Column().
 recipe_tags = Table(
     "recipe_tags",
     Base.metadata,
@@ -22,65 +34,75 @@ class TagCategory(Base):
     """
     __tablename__ = "tag_categories"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), unique=True, nullable=False)   # e.g. "Cuisine"
-    slug = Column(String(100), unique=True, nullable=False)   # e.g. "cuisine"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)   # e.g. "Cuisine"
+    slug: Mapped[str] = mapped_column(String(100), unique=True)   # e.g. "cuisine"
 
-    tags = relationship("Tag", back_populates="category", cascade="all, delete-orphan")
+    tags: Mapped[list["Tag"]] = relationship(back_populates="category", cascade="all, delete-orphan")
 
 
 class Tag(Base):
     """
     A tag such as 'Asian', 'Italian', 'Soup', 'Bread', 'Gluten-Free'.
-    Belongs to exactly one TagCategory.
+    Belongs to at most one TagCategory; slugs are unique within a category.
     """
     __tablename__ = "tags"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), nullable=False)                # e.g. "Asian"
-    slug = Column(String(100), nullable=False)                # e.g. "asian"
-    category_id = Column(Integer, ForeignKey("tag_categories.id", ondelete="SET NULL"), nullable=True)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))                # e.g. "Asian"
+    slug: Mapped[str] = mapped_column(String(100))                # e.g. "asian"
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tag_categories.id", ondelete="SET NULL")
+    )
 
-    category = relationship("TagCategory", back_populates="tags")
-    recipes = relationship("Recipe", secondary=recipe_tags, back_populates="tags")
+    category: Mapped["TagCategory | None"] = relationship(back_populates="tags")
+    recipes: Mapped[list["Recipe"]] = relationship(secondary=recipe_tags, back_populates="tags")
+
+    __table_args__ = (
+        # NULLS NOT DISTINCT: uncategorized tags share one slug namespace too.
+        UniqueConstraint(
+            "category_id", "slug", name="uq_tags_category_id_slug",
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
 
 
 class Recipe(Base):
     """
     Core recipe entity. Stores structured content extracted from web pages,
-    images, or manual entry. Source image/page stored in Cloudflare R2.
+    images, email, or manual entry. Images are stored in MinIO.
     """
     __tablename__ = "recipes"
 
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(Text, nullable=False)
-    description = Column(Text, nullable=True)
-    ingredients = Column(Text, nullable=True)       # stored as plain text or JSON string
-    instructions = Column(Text, nullable=True)
-    servings = Column(Text, nullable=True)
-    prep_time = Column(Text, nullable=True)
-    cook_time = Column(Text, nullable=True)
-    source_url = Column(Text, nullable=True)    # original web URL if captured from web
-    source_type = Column(Text, nullable=False, default="manual")  # web | image | manual
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    ingredients: Mapped[str | None] = mapped_column(Text)   # plain text or JSON string
+    instructions: Mapped[str | None] = mapped_column(Text)
+    servings: Mapped[str | None] = mapped_column(Text)
+    prep_time: Mapped[str | None] = mapped_column(Text)
+    cook_time: Mapped[str | None] = mapped_column(Text)
+    source_url: Mapped[str | None] = mapped_column(Text)    # original web URL if captured from web
+    source_type: Mapped[str] = mapped_column(Text, default="manual")  # web | image | manual | email
 
     # MinIO references
-    image_key = Column(Text, nullable=True)
-    image_url = Column(Text, nullable=True)
-    thumbnail_key = Column(Text, nullable=True)
-    thumbnail_url = Column(Text, nullable=True)
+    image_key: Mapped[str | None] = mapped_column(Text)
+    image_url: Mapped[str | None] = mapped_column(Text)
+    thumbnail_key: Mapped[str | None] = mapped_column(Text)
+    thumbnail_url: Mapped[str | None] = mapped_column(Text)
 
     # True while an email-sourced recipe is waiting for the user to pick an image
-    image_pending = Column(Boolean, nullable=False, default=False)
+    image_pending: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Full-text search vector (populated by DB trigger or application)
-    search_vector = Column(TSVECTOR, nullable=True)
+    search_vector: Mapped[str | None] = mapped_column(TSVECTOR)
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
-    tags = relationship("Tag", secondary=recipe_tags, back_populates="recipes")
-    image_candidates = relationship(
-        "RecipeImageCandidate", back_populates="recipe", cascade="all, delete-orphan"
+    tags: Mapped[list["Tag"]] = relationship(secondary=recipe_tags, back_populates="recipes")
+    image_candidates: Mapped[list["RecipeImageCandidate"]] = relationship(
+        back_populates="recipe", cascade="all, delete-orphan"
     )
 
     __table_args__ = (
@@ -92,85 +114,85 @@ class ScannedEmail(Base):
     """Tracks Gmail messages that have been processed to prevent re-scanning."""
     __tablename__ = "scanned_emails"
 
-    id = Column(Integer, primary_key=True, index=True)
-    gmail_message_id = Column(String(100), unique=True, nullable=False, index=True)
-    subject = Column(String(500), nullable=True)
-    sender = Column(String(255), nullable=True)
-    email_date = Column(String(100), nullable=True)
-    scanned_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    gmail_message_id: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    subject: Mapped[str | None] = mapped_column(String(500))
+    sender: Mapped[str | None] = mapped_column(String(255))
+    email_date: Mapped[str | None] = mapped_column(String(100))
+    scanned_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     # "imported" | "candidate" | "discarded" | "no_recipe"
-    disposition = Column(String(50), nullable=False)
+    disposition: Mapped[str] = mapped_column(String(50))
 
-    candidate = relationship("EmailRecipeCandidate", back_populates="scanned_email", uselist=False)
+    candidate: Mapped["EmailRecipeCandidate | None"] = relationship(back_populates="scanned_email")
 
 
 class EmailRecipeCandidate(Base):
     """Extracted recipe from email, queued for user review before importing."""
     __tablename__ = "email_recipe_candidates"
 
-    id = Column(Integer, primary_key=True, index=True)
-    scanned_email_id = Column(Integer, ForeignKey("scanned_emails.id", ondelete="CASCADE"), nullable=False)
-    title = Column(Text, nullable=False)
-    description = Column(Text, nullable=True)
-    ingredients = Column(Text, nullable=True)
-    instructions = Column(Text, nullable=True)
-    servings = Column(Text, nullable=True)
-    prep_time = Column(Text, nullable=True)
-    cook_time = Column(Text, nullable=True)
-    source_sender = Column(String(255), nullable=True)
-    source_subject = Column(String(500), nullable=True)
-    recipe_id = Column(Integer, ForeignKey("recipes.id", ondelete="SET NULL"), nullable=True)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scanned_email_id: Mapped[int] = mapped_column(ForeignKey("scanned_emails.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    ingredients: Mapped[str | None] = mapped_column(Text)
+    instructions: Mapped[str | None] = mapped_column(Text)
+    servings: Mapped[str | None] = mapped_column(Text)
+    prep_time: Mapped[str | None] = mapped_column(Text)
+    cook_time: Mapped[str | None] = mapped_column(Text)
+    source_sender: Mapped[str | None] = mapped_column(String(255))
+    source_subject: Mapped[str | None] = mapped_column(String(500))
+    recipe_id: Mapped[int | None] = mapped_column(ForeignKey("recipes.id", ondelete="SET NULL"))
     # "pending" | "imported" | "discarded"
-    status = Column(String(50), nullable=False, default="pending")
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
-    scanned_email = relationship("ScannedEmail", back_populates="candidate")
-    recipe = relationship("Recipe")
+    scanned_email: Mapped["ScannedEmail"] = relationship(back_populates="candidate")
+    recipe: Mapped["Recipe | None"] = relationship()
 
 
 class AppSetting(Base):
     """Key-value store for user-configurable app settings persisted in the DB."""
     __tablename__ = "app_settings"
 
-    key = Column(String(100), primary_key=True)
-    value = Column(Text, nullable=False)
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
 
 
 class RecipeImageCandidate(Base):
     """Up to 3 candidate images for an email-sourced recipe, pending user selection."""
     __tablename__ = "recipe_image_candidates"
 
-    id = Column(Integer, primary_key=True, index=True)
-    recipe_id = Column(Integer, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
-    image_url = Column(String(2048), nullable=False)
-    score = Column(Integer, nullable=False)        # 0-100 confidence
-    rank = Column(Integer, nullable=False)         # display order (0 = highest confidence)
-    selected = Column(Boolean, nullable=False, default=False)
-    sender_domain = Column(String(255), nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id", ondelete="CASCADE"), index=True)
+    image_url: Mapped[str] = mapped_column(String(2048))
+    score: Mapped[int] = mapped_column(Integer)        # 0-100 confidence
+    rank: Mapped[int] = mapped_column(Integer)         # display order (0 = highest confidence)
+    selected: Mapped[bool] = mapped_column(Boolean, default=False)
+    sender_domain: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
-    recipe = relationship("Recipe", back_populates="image_candidates")
+    recipe: Mapped["Recipe"] = relationship(back_populates="image_candidates")
 
 
 class WatchedSite(Base):
     """A website the user wants to revisit manually on a recurring schedule."""
     __tablename__ = "watched_sites"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)
-    url = Column(String(2048), nullable=False)
-    check_every_days = Column(Integer, nullable=False, default=7)
-    last_visited_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    url: Mapped[str] = mapped_column(String(2048))
+    check_every_days: Mapped[int] = mapped_column(Integer, default=7)
+    last_visited_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
 class EmailImagePreference(Base):
     """Per-sender-domain record of which image the user tends to pick."""
     __tablename__ = "email_image_preferences"
 
-    id = Column(Integer, primary_key=True, index=True)
-    sender_domain = Column(String(255), unique=True, nullable=False, index=True)
-    url_domain = Column(String(255), nullable=True)   # image host the user tends to pick
-    preferred_rank = Column(Integer, nullable=True)   # rank (0-indexed) user tends to pick
-    selection_count = Column(Integer, nullable=False, default=0)
-    last_used_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sender_domain: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    url_domain: Mapped[str | None] = mapped_column(String(255))   # image host the user tends to pick
+    preferred_rank: Mapped[int | None] = mapped_column(Integer)   # rank (0-indexed) user tends to pick
+    selection_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)

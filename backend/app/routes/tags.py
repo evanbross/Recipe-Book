@@ -2,6 +2,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -35,11 +36,28 @@ def list_tags(category_id: Optional[int] = None, db: Session = Depends(get_db)) 
     return q.order_by(models.Tag.name).all()
 
 
-@router.post("", response_model=schemas.TagOut, status_code=status.HTTP_201_CREATED)
+# ai: claude-opus-5-5 | 2026-11-14
+@router.post(
+    "", response_model=schemas.TagOut, status_code=status.HTTP_201_CREATED,
+    responses={
+        404: {"description": "category_id does not exist"},
+        409: {"description": "A tag with this slug already exists in the category"},
+    },
+)
 def create_tag(payload: schemas.TagCreate, db: Session = Depends(get_db)) -> schemas.TagOut:
+    if payload.category_id is not None and db.get(models.TagCategory, payload.category_id) is None:
+        raise HTTPException(status_code=404, detail="Category not found")
     tag = models.Tag(**payload.model_dump())
     db.add(tag)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # The category was checked above, so this is uq_tags_category_id_slug.
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A tag with this name already exists in that category",
+        )
     db.refresh(tag)
     return tag
 

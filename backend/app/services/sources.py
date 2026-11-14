@@ -88,15 +88,31 @@ _SOURCE_CATEGORY_NAME = "Source"
 _SOURCE_CATEGORY_SLUG = "source"
 
 
-def _normalize_domain(domain: str) -> str:
-    return domain.removeprefix("www.").lower()
+# ai: claude-opus-5-5 | 2026-11-14
+# Second-level labels that sit under a country TLD as part of the public suffix
+# (co.uk, com.au, org.nz, ...). A heuristic, not the full Public Suffix List.
+_SECOND_LEVEL_LABELS: frozenset[str] = frozenset({"co", "com", "org", "net", "gov", "edu", "ac"})
 
 
+# ai: claude-opus-5-5 | 2026-11-14
+def _normalize_domain(hostname: str) -> str:
+    """Expects urlparse().hostname, which is already lowercased with no port."""
+    return hostname.removeprefix("www.")
+
+
+# ai: claude-opus-5-5 | 2026-11-14
 def _prettify_domain(domain: str) -> str:
-    """Convert a domain like 'some-blog.com' to 'Some Blog'."""
-    base = domain.removeprefix("www.").split(":")[0]
-    name = base.rsplit(".", 1)[0]  # strip TLD
-    name = name.replace("-", " ").replace("_", " ")
+    """Name a site after the label before its public suffix.
+
+    'some-blog.com' -> 'Some Blog', 'my-blog.co.uk' -> 'My Blog',
+    'recipes.example.com' -> 'Example'.
+    """
+    labels = [label for label in domain.split(".") if label]
+    if len(labels) > 1:
+        labels = labels[:-1]  # TLD
+    if len(labels) > 1 and labels[-1] in _SECOND_LEVEL_LABELS:
+        labels = labels[:-1]
+    name = labels[-1].replace("-", " ").replace("_", " ") if labels else ""
     return " ".join(word.capitalize() for word in name.split())
 
 
@@ -109,8 +125,11 @@ def _to_slug(name: str) -> str:
 
 def resolve_source_name(url: str, jsonld_recipe: dict | None = None) -> str | None:
     """Derive a human-readable source name from a URL and optional JSON-LD data."""
-    parsed = urlparse(url)
-    domain = _normalize_domain(parsed.netloc)
+    # ai: claude-opus-5-5 | 2026-11-14
+    hostname = urlparse(url).hostname
+    if not hostname:
+        return None
+    domain = _normalize_domain(hostname)
 
     # 1. Check known sources
     if domain in _KNOWN_SOURCES:
@@ -127,7 +146,7 @@ def resolve_source_name(url: str, jsonld_recipe: dict | None = None) -> str | No
             return publisher.strip()
 
     # 3. Fallback to prettified domain
-    pretty = _prettify_domain(parsed.netloc)
+    pretty = _prettify_domain(domain)  # ai: claude-opus-5-5 | 2026-11-14
     return pretty if pretty else None
 
 
