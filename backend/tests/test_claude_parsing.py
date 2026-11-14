@@ -134,6 +134,26 @@ def test_api_error_propagates(claude):
         request_text("hi")
 
 
+# ai: claude-opus-5-5 | 2026-11-14
+def test_effort_omitted_by_default(claude):
+    request_text("hi")
+    assert "output_config" not in claude.last_body
+
+
+def test_effort_is_sent_when_given(claude):
+    request_text("hi", effort="low")
+    assert claude.last_body["output_config"] == {"effort": "low"}
+
+
+@pytest.mark.parametrize("call", [
+    lambda: parse_recipe_from_email("s", "a@b.com", "body"),
+    lambda: parse_recipe_from_page("https://a.com/r/1", "text"),
+])
+def test_email_scan_calls_use_low_effort(claude, call):
+    call()
+    assert claude.last_body["output_config"] == {"effort": "low"}
+
+
 def test_image_content_blocks_are_sent_unchanged(claude):
     blocks = [{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAAA"}},
               {"type": "text", "text": "extract"}]

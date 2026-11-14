@@ -40,7 +40,7 @@ import anthropic
 from pydantic import ValidationError
 
 from app.schemas import CaptureResult
-from app.services.claude_client import request_text
+from app.services.claude_client import Effort, request_text
 from app.services.claude_json import parse_json_reply
 
 logger = logging.getLogger(__name__)
@@ -48,6 +48,11 @@ logger = logging.getLogger(__name__)
 # Max body chars sent to Claude. Recipe emails are typically longer than web
 # pages (full recipe + newsletter fluff), so allow more than the scraper's 8k.
 _MAX_BODY_CHARS = 15_000
+
+# ai: claude-opus-5-5 | 2026-11-14
+# A scan makes hundreds of calls, and pulling a recipe out of an email is
+# extraction rather than reasoning, so low effort keeps it fast and cheap.
+_SCAN_EFFORT: Effort = "low"
 
 _PROMPT = """
 You are a recipe extraction assistant. Analyze the provided email and:
@@ -106,7 +111,7 @@ def _to_capture_result(raw: str, fallback_title: str, source: str) -> CaptureRes
 # ai: claude-opus-5-5 | 2026-11-13
 def _request_extraction(user_content: str) -> str:
     """Send the extraction prompt plus content to Claude and return the reply text."""
-    return request_text(f"{_PROMPT}\n\n{user_content}")
+    return request_text(f"{_PROMPT}\n\n{user_content}", effort=_SCAN_EFFORT)  # ai: claude-opus-5-5 | 2026-11-14
 
 
 def parse_recipe_from_page(url: str, page_text: str) -> CaptureResult | None:

@@ -12,7 +12,7 @@ Every service sends its prompt through request_text(), so the model (the
 CLAUDE_MODEL setting), refusal fallbacks, and response handling are defined once.
 """
 import logging
-from typing import Any
+from typing import Any, Literal
 
 import anthropic
 
@@ -31,15 +31,20 @@ _MAX_TOKENS = 16_000
 _FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
+Effort = Literal["low", "medium", "high", "xhigh", "max"]
+
+
 class ClaudeRefusalError(RuntimeError):
     """Claude (and its fallback) declined the request; there is no answer text."""
 
 
-# ai: claude-opus-5-5 | 2026-11-13
-def request_text(content: str | list[dict[str, Any]]) -> str:
+# ai: claude-opus-5-5 | 2026-11-14
+def request_text(content: str | list[dict[str, Any]], effort: Effort | None = None) -> str:
     """Send one user message to the configured model and return its text reply.
 
     Thinking blocks are skipped; only text blocks are returned, joined.
+    `effort` trades thinking depth for speed and cost; None keeps the model's
+    default (high). Bulk callers such as the email scan pass "low".
 
     Raises:
         ClaudeRefusalError: the request was declined.
@@ -51,6 +56,7 @@ def request_text(content: str | list[dict[str, Any]]) -> str:
         betas=[_FALLBACK_BETA],
         fallbacks="default",
         messages=[{"role": "user", "content": content}],
+        output_config={"effort": effort} if effort else anthropic.omit,
     )
 
     if response.stop_reason == "refusal":
