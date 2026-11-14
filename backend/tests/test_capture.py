@@ -37,7 +37,7 @@ def test_capture_url_success(client, capture_result):
 
 def test_capture_url_scraper_failure(client):
     with patch("app.routes.capture.scraper_svc.fetch_page",
-               side_effect=Exception("timeout")):
+               side_effect=httpx.ConnectTimeout("timeout")):
         response = client.post("/capture/url", json={"url": "https://example.com/recipe"})
 
     assert response.status_code == 422

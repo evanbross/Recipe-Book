@@ -350,7 +350,7 @@ def _b64decode(data: str) -> str:
         return ""
     try:
         return base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="replace")
-    except Exception:
+    except ValueError:  # ai: claude-opus-5-5 | 2026-11-13 — binascii.Error subclasses ValueError
         return ""
 
 

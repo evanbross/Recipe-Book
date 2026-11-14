@@ -39,6 +39,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.config import GMAIL_SCOPES, GOOGLE_CREDENTIALS_FILE, GOOGLE_TOKEN_FILE, settings
@@ -103,8 +104,9 @@ def auth_connect() -> EmailConnectResponse:
         raise HTTPException(
             status_code=400,
             detail=(
-                "client_secret.json not found in backend/credentials/. "
-                "Download OAuth2 Desktop credentials from Google Cloud Console and place them there."
+                # ai: claude-opus-5-5 | 2026-11-13 — name comes from config, not a stale literal
+                f"{GOOGLE_CREDENTIALS_FILE.name} not found in backend/credentials/. "
+                "Download OAuth2 Desktop credentials from Google Cloud Console and save them there."
             ),
         )
     flow = Flow.from_client_secrets_file(
@@ -166,6 +168,16 @@ def start_scan(db: Session = Depends(get_db)) -> dict[str, str]:
     if not GOOGLE_TOKEN_FILE.exists():
         raise HTTPException(status_code=401, detail="Not authenticated with Gmail.")
 
+    # ai: claude-opus-5-5 | 2026-11-13
+    # Read settings before claiming the running flag: a failure here must not
+    # leave running=True with no thread, which would 409 every scan until restart.
+    auto_import = _get_setting(db, "email_auto_import", "true") == "true"
+    raw_labels = _get_setting(db, "email_scan_labels", settings.email_scan_labels)
+    labels = [lbl.strip() for lbl in raw_labels.split(",") if lbl.strip()] or ["Cooking"]
+    scan_inbox = _get_setting(db, "email_scan_inbox", "false") == "true"
+    lookback = int(_get_setting(db, "email_inbox_lookback_days", str(settings.email_scan_inbox_lookback_days)))
+    max_per_folder = int(_get_setting(db, "email_scan_max_per_folder", str(settings.email_scan_max_per_folder)))
+
     with _scan_lock:
         if _scan_status["running"]:
             raise HTTPException(status_code=409, detail="A scan is already running.")
@@ -182,13 +194,6 @@ def start_scan(db: Session = Depends(get_db)) -> dict[str, str]:
         })
     with _scan_log_lock:
         _scan_log.clear()
-
-    auto_import = _get_setting(db, "email_auto_import", "true") == "true"
-    raw_labels = _get_setting(db, "email_scan_labels", settings.email_scan_labels)
-    labels = [lbl.strip() for lbl in raw_labels.split(",") if lbl.strip()] or ["Cooking"]
-    scan_inbox = _get_setting(db, "email_scan_inbox", "false") == "true"
-    lookback = int(_get_setting(db, "email_inbox_lookback_days", str(settings.email_scan_inbox_lookback_days)))
-    max_per_folder = int(_get_setting(db, "email_scan_max_per_folder", str(settings.email_scan_max_per_folder)))
 
     thread = threading.Thread(
         target=_run_scan,
@@ -285,7 +290,10 @@ def list_candidates(db: Session = Depends(get_db)) -> list[EmailCandidateOut]:
 
 @router.post("/candidates/{candidate_id}/import", response_model=RecipeOut, status_code=status.HTTP_201_CREATED)
 def import_candidate(candidate_id: int, db: Session = Depends(get_db)) -> RecipeOut:
-    candidate = db.get(models.EmailRecipeCandidate, candidate_id)
+    # ai: claude-opus-5-5 | 2026-11-13
+    # Row lock until commit: a concurrent import of the same candidate waits, then
+    # sees status != "pending" and gets 409 instead of creating a duplicate recipe.
+    candidate = db.get(models.EmailRecipeCandidate, candidate_id, with_for_update=True)
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found.")
     if candidate.status != "pending":
@@ -501,7 +509,7 @@ def _scrape_linked_recipes(
     log_entry: dict[str, Any],
 ) -> int:
     """
-    Fetch each URL, extract its recipe via Claude Haiku, and create a Recipe or
+    Fetch each URL, extract its recipe via Claude, and create a Recipe or
     Candidate row.  Returns the number of recipes successfully imported/queued.
 
     This is called when an email contains "Get Recipe" links but no inline recipe
@@ -732,9 +740,8 @@ def _get_setting(db: Session, key: str, default: str) -> str:
     return row.value if row else default
 
 
+# ai: claude-opus-5-5 | 2026-11-13
 def _set_setting(db: Session, key: str, value: str) -> None:
-    row = db.get(models.AppSetting, key)
-    if row:
-        row.value = value
-    else:
-        db.add(models.AppSetting(key=key, value=value))
+    """Atomic upsert (no SELECT-then-INSERT race on the primary key). Caller commits."""
+    stmt = pg_insert(models.AppSetting.__table__).values(key=key, value=value)
+    db.execute(stmt.on_conflict_do_update(index_elements=["key"], set_={"value": value}))

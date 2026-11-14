@@ -68,6 +68,9 @@ POSTGRES_SSLMODE=prefer
 
 # Anthropic
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
+# Model for every Claude call (recipe extraction, email parsing, tag suggestions).
+# Must support server-side refusal fallbacks (fallbacks="default").
+CLAUDE_MODEL=claude-sonnet-5-5
 
 # MinIO (S3-compatible object storage)
 MINIO_ENDPOINT=http://localhost:9000
@@ -119,6 +122,9 @@ class Settings(BaseSettings):
     postgres_sslmode: str = "prefer"
 
     anthropic_api_key: str
+    # ai: claude-opus-5-5 | 2026-11-13
+    # Single source for the model every Claude call uses (services/claude_client.py).
+    claude_model: str = "claude-sonnet-5-5"
     minio_endpoint: str
     minio_access_key: str
     minio_secret_key: str

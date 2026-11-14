@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, UTC
 from urllib.parse import urljoin
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,7 @@ from app.services import vision as vision_svc
 from app.services import storage as storage_svc
 from app.services import scraper as scraper_svc
 from app.services import sources as sources_svc
+from app.services.url_guard import UnsafeURLError
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +41,13 @@ def capture_from_url(payload: schemas.CaptureUrlRequest, db: Session = Depends(g
         # Phase 1 — fetch page
         try:
             page_text, og_image_url, final_url, jsonld_recipe = scraper_svc.fetch_page(payload.url)
-        except Exception as e:
+        # ai: claude-opus-5-5 | 2026-11-13
+        except UnsafeURLError as e:
+            logger.warning("[capture] Blocked fetch of %s: %s", payload.url, e)
+            raise HTTPException(status_code=400, detail="URL not allowed: it points to a private or local address.")
+        except httpx.HTTPError as e:
             logger.warning("[capture] Fetch failed for %s: %s", payload.url, e)
-            raise HTTPException(status_code=422, detail=f"Failed to fetch URL: {e}")
+            raise HTTPException(status_code=422, detail="Failed to fetch URL.")
 
         # Phase 2 — extract recipe
         try:
@@ -54,7 +60,7 @@ def capture_from_url(payload: schemas.CaptureUrlRequest, db: Session = Depends(g
                 extracted = vision_svc.extract_from_text(page_text)
         except Exception as e:
             logger.warning("[capture] Extraction failed for %s: %s", payload.url, e)
-            raise HTTPException(status_code=422, detail=f"Claude extraction failed: {e}")
+            raise HTTPException(status_code=422, detail="Claude extraction failed.")  # ai: claude-opus-5-5 | 2026-11-13
 
         # Resolve source tag from URL / JSON-LD
         source_name = sources_svc.resolve_source_name(final_url, jsonld_recipe)
@@ -164,9 +170,13 @@ def scan_for_links(payload: schemas.ScanRequest) -> schemas.ScanResponse:
     if payload.url and not payload.html:
         try:
             html, source_url = scraper_svc.fetch_page_html(payload.url)
-        except Exception as e:
+        # ai: claude-opus-5-5 | 2026-11-13
+        except UnsafeURLError as e:
+            logger.warning("[scan] Blocked fetch of %s: %s", payload.url, e)
+            raise HTTPException(status_code=400, detail="URL not allowed: it points to a private or local address.")
+        except httpx.HTTPError as e:
             logger.warning("[scan] Failed to fetch %s: %s", payload.url, e)
-            raise HTTPException(status_code=422, detail=f"Failed to fetch URL: {e}")
+            raise HTTPException(status_code=422, detail="Failed to fetch URL.")
     else:
         html = payload.html
         source_url = payload.base_url
@@ -177,7 +187,7 @@ def scan_for_links(payload: schemas.ScanRequest) -> schemas.ScanResponse:
         logger.exception("[scan] Link extraction failed for %s: %s", source_url, e)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to extract links from {source_url}: {type(e).__name__}: {e}",
+            detail="Failed to extract links from the page.",  # ai: claude-opus-5-5 | 2026-11-13
         )
 
     links = [
@@ -207,7 +217,7 @@ async def capture_from_image(
         extracted = vision_svc.extract_from_image_bytes(image_bytes, media_type)
     except Exception as e:
         logger.warning("[capture:image] Claude extraction failed: %s", e)
-        raise HTTPException(status_code=422, detail=f"Claude extraction failed: {e}")
+        raise HTTPException(status_code=422, detail="Claude extraction failed.")  # ai: claude-opus-5-5 | 2026-11-13
 
     # Upload original + thumbnail to MinIO with identifying metadata
     img_metadata = {
@@ -220,7 +230,7 @@ async def capture_from_image(
         stored = storage_svc.upload_image(image_bytes, media_type, metadata=img_metadata)
     except Exception as e:
         logger.error("[capture:image] Storage upload failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"Storage upload failed: {e}")
+        raise HTTPException(status_code=500, detail="Storage upload failed.")  # ai: claude-opus-5-5 | 2026-11-13
 
     # Parse tag_ids from comma-separated form field
     parsed_tag_ids = [int(t) for t in tag_ids.split(",") if t.strip().isdigit()]

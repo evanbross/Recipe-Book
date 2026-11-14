@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from typing import Optional
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, Field, computed_field
 
 
 # ── Tag Category ──────────────────────────────────────────────────────────────
@@ -191,8 +191,9 @@ class EmailSettingsUpdate(BaseModel):
     auto_import: Optional[bool] = None
     labels: Optional[list[str]] = None
     scan_inbox: Optional[bool] = None
-    inbox_lookback_days: Optional[int] = None
-    max_per_folder: Optional[int] = None
+    # ai: claude-opus-5-5 | 2026-11-13
+    inbox_lookback_days: Optional[int] = Field(default=None, ge=1)
+    max_per_folder: Optional[int] = Field(default=None, ge=0)  # 0 = unlimited
 
 class EmailCandidateOut(BaseModel):
     id: int
@@ -229,12 +230,12 @@ class SelectImageRequest(BaseModel):
 class WatchedSiteCreate(BaseModel):
     name: str
     url: str
-    check_every_days: int = 7
+    check_every_days: int = Field(default=7, ge=1)  # ai: claude-opus-5-5 | 2026-11-13
 
 class WatchedSiteUpdate(BaseModel):
     name: Optional[str] = None
     url: Optional[str] = None
-    check_every_days: Optional[int] = None
+    check_every_days: Optional[int] = Field(default=None, ge=1)  # ai: claude-opus-5-5 | 2026-11-13
 
 class WatchedSiteOut(BaseModel):
     id: int
