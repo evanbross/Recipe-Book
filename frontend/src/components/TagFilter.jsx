@@ -169,7 +169,7 @@ export default function TagFilter({ selectedIds, onChangeIds, mode, onChangeMode
             </div>
           )}
           {filteredTags.length === 0 && inputValue && (
-            <div className={styles.dropEmpty}>No tags match "{inputValue}"</div>
+            <div className={styles.dropEmpty}>No tags match &ldquo;{inputValue}&rdquo;</div>
           )}
         </div>
       )}
