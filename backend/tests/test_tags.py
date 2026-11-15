@@ -11,7 +11,7 @@ def test_list_categories_empty(client):
 
 
 def test_create_category(client):
-    response = client.post("/tags/categories", json={"name": "Cuisine", "slug": "cuisine"})
+    response = client.post("/tags/categories", json={"name": "Cuisine"})
     payload = response.json()
 
     assert response.status_code == 201
@@ -33,7 +33,7 @@ def test_list_categories(client, make_category):
 
 
 def test_create_tag_no_category(client):
-    response = client.post("/tags", json={"name": "Vegan", "slug": "vegan"})
+    response = client.post("/tags", json={"name": "Vegan"})
     payload = response.json()
 
     assert response.status_code == 201
@@ -47,7 +47,7 @@ def test_create_tag_with_category(client, make_category):
 
     response = client.post(
         "/tags",
-        json={"name": "Italian", "slug": "italian", "category_id": category.id},
+        json={"name": "Italian", "category_id": category.id},
     )
     payload = response.json()
 
@@ -106,7 +106,7 @@ def test_create_tag_duplicate_slug_in_category_conflicts(client, make_category, 
     make_tag(name="Italian", slug="italian", category_id=category.id)
 
     response = client.post(
-        "/tags", json={"name": "Italian", "slug": "italian", "category_id": category.id},
+        "/tags", json={"name": "Italian", "category_id": category.id},
     )
 
     assert response.status_code == 409
@@ -115,7 +115,7 @@ def test_create_tag_duplicate_slug_in_category_conflicts(client, make_category, 
 def test_create_tag_duplicate_uncategorized_slug_conflicts(client, make_tag):
     make_tag(name="Vegan", slug="vegan")
 
-    response = client.post("/tags", json={"name": "Vegan", "slug": "vegan"})
+    response = client.post("/tags", json={"name": "Vegan"})
 
     assert response.status_code == 409
 
@@ -125,15 +125,67 @@ def test_create_tag_same_slug_in_other_category_is_allowed(client, make_category
     diet = make_category(name="Diet", slug="diet")
     make_tag(name="Keto", slug="keto", category_id=cuisine.id)
 
-    response = client.post("/tags", json={"name": "Keto", "slug": "keto", "category_id": diet.id})
+    response = client.post("/tags", json={"name": "Keto", "category_id": diet.id})
 
     assert response.status_code == 201
 
 
 def test_create_tag_unknown_category_not_found(client):
-    response = client.post("/tags", json={"name": "X", "slug": "x", "category_id": 99999})
+    response = client.post("/tags", json={"name": "X", "category_id": 99999})
 
     assert response.status_code == 404
+
+
+# ai: claude-opus-5-5 | 2026-11-14
+# ── Server-side slug derivation ──────────────────────────────────────────────
+
+@pytest.mark.parametrize("name, slug", [
+    ("Crème Brûlée", "creme-brulee"),
+    ("Quick & Easy", "quick-easy"),
+    ("  Weeknight  Dinners ", "weeknight-dinners"),
+])
+def test_create_tag_derives_slug_from_name(client, name, slug):
+    response = client.post("/tags", json={"name": name})
+
+    assert response.status_code == 201
+    assert response.json()["slug"] == slug
+    assert response.json()["name"] == name.strip()
+
+
+def test_create_tag_ignores_client_slug(client):
+    response = client.post("/tags", json={"name": "Vegan", "slug": "something-else"})
+
+    assert response.json()["slug"] == "vegan"
+
+
+def test_names_differing_only_in_punctuation_conflict(client):
+    assert client.post("/tags", json={"name": "Quick & Easy"}).status_code == 201
+
+    assert client.post("/tags", json={"name": "Quick Easy"}).status_code == 409
+
+
+@pytest.mark.parametrize("name", ["寿司", "!!!"])
+def test_create_tag_without_sluggable_characters_rejected(client, name):
+    response = client.post("/tags", json={"name": name})
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("name", ["", "   ", "x" * 101])
+def test_create_tag_invalid_name_length_rejected(client, name):
+    assert client.post("/tags", json={"name": name}).status_code == 422
+
+
+def test_create_category_duplicate_conflicts(client, make_category):
+    make_category(name="Cuisine", slug="cuisine")
+
+    response = client.post("/tags/categories", json={"name": "Cuisine"})
+
+    assert response.status_code == 409
+
+
+def test_create_category_without_sluggable_characters_rejected(client):
+    assert client.post("/tags/categories", json={"name": "料理"}).status_code == 422
 
 
 # ai: claude-opus-5-5 | 2026-11-14

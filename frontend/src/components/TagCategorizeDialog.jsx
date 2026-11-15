@@ -29,7 +29,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { X, Plus, Sparkles } from 'lucide-react'
 import { getTags, getTagCategories, createTag as createTagApi, suggestTags } from '../api/client'
-import { toTitleCase, toSlug } from '../utils/titleCase'
+import { toTitleCase } from '../utils/titleCase'
 import styles from './TagCategorizeDialog.module.css'
 
 export default function TagCategorizeDialog({ recipe, onSave, onClose }) {
@@ -43,7 +43,7 @@ export default function TagCategorizeDialog({ recipe, onSave, onClose }) {
   const [newTagCategoryId, setNewTagCategoryId] = useState(null)
   const [suggestState, setSuggestState] = useState('loading')
   const [suggestions, setSuggestions] = useState({ existing_tag_ids: [], new_tags: [] })
-  const [creatingSlug, setCreatingSlug] = useState(null)
+  const [creatingName, setCreatingName] = useState(null)
   const [saving, setSaving] = useState(false)
 
   const hasFetchedRef = useRef(false)
@@ -112,35 +112,40 @@ export default function TagCategorizeDialog({ recipe, onSave, onClose }) {
     })
   }
 
+  // ai: claude-opus-5-5 | 2026-11-14
+  // The server derives slugs, so only the name is sent. A failed create is
+  // already reported by createTagMutation's onError toast; the catches only stop
+  // mutateAsync's rejection from surfacing as an unhandled promise rejection.
   const handleCreateSuggestedTag = async (suggested) => {
     const name = toTitleCase(suggested.name)
-    const slug = toSlug(name)
-    setCreatingSlug(slug)
+    setCreatingName(suggested.name)
     const categoryId = suggested.category_name
       ? categories.find(
           c => c.name.toLowerCase() === suggested.category_name.toLowerCase()
         )?.id ?? null
       : null
     try {
-      await createTagMutation.mutateAsync({ name, slug, category_id: categoryId })
+      await createTagMutation.mutateAsync({ name, category_id: categoryId })
       setSuggestions(s => ({
         ...s,
         new_tags: s.new_tags.filter(t => t.name !== suggested.name),
       }))
+    } catch {
+      // reported by onError
     } finally {
-      setCreatingSlug(null)
+      setCreatingName(null)
     }
   }
 
+  // ai: claude-opus-5-5 | 2026-11-14
   const handleAddCustomTag = async () => {
     const name = toTitleCase(newTagName.trim())
     if (!name) return
-    const slug = toSlug(name)
-    await createTagMutation.mutateAsync({
-      name,
-      slug,
-      category_id: newTagCategoryId,
-    })
+    try {
+      await createTagMutation.mutateAsync({ name, category_id: newTagCategoryId })
+    } catch {
+      return  // reported by onError; keep the typed name so it can be corrected
+    }
     setNewTagName('')
     setNewTagCategoryId(null)
   }
@@ -222,7 +227,7 @@ export default function TagCategorizeDialog({ recipe, onSave, onClose }) {
                     type="button"
                     className={styles.newTagBtn}
                     onClick={() => handleCreateSuggestedTag(t)}
-                    disabled={creatingSlug === toSlug(t.name)}
+                    disabled={creatingName === t.name}
                   >
                     <Plus size={11} />
                     {toTitleCase(t.name)}
