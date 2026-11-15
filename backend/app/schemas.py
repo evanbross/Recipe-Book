@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
-from typing import Optional
-from pydantic import BaseModel, Field, computed_field
+from typing import Annotated, Optional
+from pydantic import BaseModel, Field, StringConstraints, computed_field
 
 
 # ── Tag Category ──────────────────────────────────────────────────────────────
@@ -9,8 +9,14 @@ class TagCategoryBase(BaseModel):
     name: str
     slug: str
 
-class TagCategoryCreate(TagCategoryBase):
-    pass
+# ai: claude-opus-5-5 | 2026-11-14
+# Create payloads carry a name only; the server derives the slug (services/slugs.py).
+# Length limits match the String(100) columns so oversize names get a 422, not a 500.
+TagName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+
+
+class TagCategoryCreate(BaseModel):
+    name: TagName
 
 class TagCategoryOut(TagCategoryBase):
     id: int
@@ -24,8 +30,9 @@ class TagBase(BaseModel):
     slug: str
     category_id: Optional[int] = None
 
-class TagCreate(TagBase):
-    pass
+class TagCreate(BaseModel):  # ai: claude-opus-5-5 | 2026-11-14
+    name: TagName
+    category_id: Optional[int] = None
 
 class TagOut(TagBase):
     id: int

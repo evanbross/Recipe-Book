@@ -26,14 +26,13 @@
 # =============================================================================
 """Derive and manage source tags from recipe URLs."""
 import logging
-import re
-import unicodedata
 from urllib.parse import urlparse
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import models
+from app.services.slugs import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -116,13 +115,6 @@ def _prettify_domain(domain: str) -> str:
     return " ".join(word.capitalize() for word in name.split())
 
 
-def _to_slug(name: str) -> str:
-    """Convert a source name to a URL-safe, ASCII-only slug."""
-    normalized = unicodedata.normalize("NFKD", name)
-    ascii_only = normalized.encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"[^a-z0-9-]+", "-", ascii_only.lower()).strip("-")[:100]
-
-
 def resolve_source_name(url: str, jsonld_recipe: dict | None = None) -> str | None:
     """Derive a human-readable source name from a URL and optional JSON-LD data."""
     # ai: claude-opus-5-5 | 2026-11-14
@@ -156,7 +148,10 @@ def get_or_create_source_tag(db: Session, source_name: str) -> models.Tag | None
     Uses savepoints so concurrent requests don't race on the INSERT.
     The caller controls the final commit.
     """
-    if not source_name:
+    # ai: claude-opus-5-5 | 2026-11-14
+    slug = slugify(source_name)
+    if not slug:  # also covers an empty source_name
+        logger.info("[sources] No sluggable characters in source name %r; skipping tag", source_name)
         return None
 
     # Upsert the "Source" category
@@ -177,7 +172,6 @@ def get_or_create_source_tag(db: Session, source_name: str) -> models.Tag | None
             .first()
         )
 
-    slug = _to_slug(source_name)
 
     # Upsert the source tag
     try:

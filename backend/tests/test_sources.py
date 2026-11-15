@@ -11,6 +11,7 @@
 import pytest
 
 from app import models
+from app.services.slugs import slugify
 from app.services.sources import get_or_create_source_tag, resolve_source_name
 
 
@@ -110,5 +111,23 @@ def test_same_slug_in_another_category_is_a_separate_tag(db_session, make_catego
     assert tag.category.slug == "source"
 
 
-def test_empty_source_name_returns_none(db_session):
-    assert get_or_create_source_tag(db_session, "") is None
+@pytest.mark.parametrize("name", ["", "日本の料理"])
+def test_unsluggable_source_name_returns_none_and_creates_nothing(db_session, name):
+    assert get_or_create_source_tag(db_session, name) is None
+    assert db_session.query(models.TagCategory).count() == 0  # ai: claude-opus-5-5 | 2026-11-14
+
+
+# ai: claude-opus-5-5 | 2026-11-14
+# ── slugify ──────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("name, expected", [
+    ("Bon Appétit", "bon-appetit"),
+    ("Quick & Easy", "quick-easy"),
+    ("a - b", "a-b"),
+    ("--Edge--", "edge"),
+    ("寿司", ""),
+    # Truncation never leaves a trailing hyphen.
+    ("a" * 99 + " b", "a" * 99),
+])
+def test_slugify(name, expected):
+    assert slugify(name) == expected

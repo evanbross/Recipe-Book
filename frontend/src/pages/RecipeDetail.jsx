@@ -107,8 +107,9 @@ export default function RecipeDetail() {
 
           {recipe.tags.length > 0 && (
             <div className={styles.tags}>
+              {/* ai: claude-opus-5-5 | 2026-11-14 — link by id: Search reads ?tag_ids= */}
               {recipe.tags.map(tag => (
-                <Link key={tag.id} to={`/search?tags=${tag.slug}`} className="tag-chip">
+                <Link key={tag.id} to={`/search?tag_ids=${tag.id}`} className="tag-chip">
                   {tag.name}
                 </Link>
               ))}

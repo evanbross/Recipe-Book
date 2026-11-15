@@ -47,11 +47,3 @@ export function toTitleCase(str) {
     })
     .join(' ')
 }
-
-export function toSlug(str) {
-  return str
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-}

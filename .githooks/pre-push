@@ -7,7 +7,7 @@
 # Local quality gate (this project has no hosted CI). Runs the checks for the
 # parts of the repo this push changes:
 #   backend/   -> uv run pytest -q      (needs the POSTGRES_TEST_* database up)
-#   frontend/  -> npm run lint && npm run build
+#   frontend/  -> npm run lint && npm test && npm run build
 # Enable once per clone:     git config core.hooksPath .githooks
 # Skip for a single push:    git push --no-verify
 #
@@ -47,8 +47,8 @@ if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
 fi
 
 if [ "$run_frontend" = yes ]; then
-    echo "pre-push: frontend lint + build"
-    (cd "$repo_root/frontend" && npm run --silent lint && npm run --silent build >/dev/null)
+    echo "pre-push: frontend lint + tests + build"
+    (cd "$repo_root/frontend" && npm run --silent lint && npm test --silent && npm run --silent build >/dev/null)
 fi
 
 if [ "$run_backend" = yes ]; then

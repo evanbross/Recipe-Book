@@ -73,15 +73,6 @@ so **the UI only works through Caddy**. Without Caddy, only the backend is usabl
 
 ---
 
-## Docker
-
-`docker-compose.yml` and the Dockerfiles are from an earlier fixed-port setup and are
-**not currently maintained**. Under Compose the frontend can't reach the API (no `/api`
-proxy without Caddy), and the bundled `db` service's credentials don't match the `.env`
-format. Use the local setup above.
-
----
-
 ## Configuration
 
 All settings live in `backend/.env`. Start from `backend/.env.example`, which lists every
@@ -147,7 +138,7 @@ a model change without a matching migration (or vice versa) can't slip through. 
 ### Pre-push gate
 
 There's no hosted CI. Instead, `.githooks/pre-push` runs the backend tests and/or the
-frontend lint + build, depending on what the push changes. Enable it once per clone:
+frontend lint + tests + build, depending on what the push changes. Enable it once per clone:
 
 ```bash
 git config core.hooksPath .githooks
@@ -157,12 +148,13 @@ Skip it for one push with `git push --no-verify` (e.g. when the test database is
 
 ### Frontend checks
 
-There are no frontend tests; lint and the production build are the checks. Run both
-after any `.jsx` change:
+Vitest + React Testing Library component tests live next to the components
+(`*.test.jsx`), with the API client mocked. Run all three after any `.jsx` change:
 
 ```bash
 cd frontend
 npm run lint    # ESLint: no-undef, rules-of-hooks, React Compiler purity rules
+npm test        # Vitest (npm run test:watch while iterating)
 npm run build
 ```
 
@@ -303,7 +295,6 @@ Recipe App/
 │   ├── scripts/             # backup_minio.py
 │   ├── pyproject.toml       # dependencies (uv)
 │   ├── uv.lock
-│   ├── Dockerfile
 │   └── .env.example
 ├── frontend/
 │   ├── src/
@@ -312,6 +303,5 @@ Recipe App/
 │   │   ├── pages/           # Home, RecipeDetail, AddRecipe, Search, Settings
 │   │   └── utils/
 │   └── package.json
-├── tampermonkey/            # Userscript that sends pages to the capture listener
-└── docker-compose.yml       # Not currently maintained (see Docker)
+└── tampermonkey/            # Userscript that sends pages to the capture listener
 ```
