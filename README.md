@@ -73,15 +73,6 @@ so **the UI only works through Caddy**. Without Caddy, only the backend is usabl
 
 ---
 
-## Docker
-
-`docker-compose.yml` and the Dockerfiles are from an earlier fixed-port setup and are
-**not currently maintained**. Under Compose the frontend can't reach the API (no `/api`
-proxy without Caddy), and the bundled `db` service's credentials don't match the `.env`
-format. Use the local setup above.
-
----
-
 ## Configuration
 
 All settings live in `backend/.env`. Start from `backend/.env.example`, which lists every
@@ -303,7 +294,6 @@ Recipe App/
 │   ├── scripts/             # backup_minio.py
 │   ├── pyproject.toml       # dependencies (uv)
 │   ├── uv.lock
-│   ├── Dockerfile
 │   └── .env.example
 ├── frontend/
 │   ├── src/
@@ -312,6 +302,5 @@ Recipe App/
 │   │   ├── pages/           # Home, RecipeDetail, AddRecipe, Search, Settings
 │   │   └── utils/
 │   └── package.json
-├── tampermonkey/            # Userscript that sends pages to the capture listener
-└── docker-compose.yml       # Not currently maintained (see Docker)
+└── tampermonkey/            # Userscript that sends pages to the capture listener
 ```

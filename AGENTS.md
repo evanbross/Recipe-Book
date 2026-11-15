@@ -12,7 +12,6 @@ making any changes.
 - `../Dev-Standards/REACT_STANDARDS.md`
 - `../Dev-Standards/FASTAPI_STANDARDS.md`
 - `../Dev-Standards/TESTING_STANDARDS.md`
-- `../Dev-Standards/INFRASTRUCTURE_STANDARDS.md`
 - `../Dev-Standards/CODEX_CODING_STANDARDS.md`
 - `../Dev-Standards/CODEX_SESSION_RULES.md`
 - `../Dev-Standards/CODEX_REVIEW_CHECKLIST.md`
@@ -30,8 +29,7 @@ code unless asked. Recipe extraction powered by the Anthropic Claude API (vision
 Recipes can also be harvested from Gmail newsletters and from a Tampermonkey userscript.
 
 Local dev runs via the root `main.py` (picks free ports, starts uvicorn + Vite, registers
-routes with Caddy at `http://recipe-app.localhost`). `docker-compose.yml` is not
-maintained — see README.
+routes with Caddy at `http://recipe-app.localhost`). There is no Docker or hosted-CI setup.
 
 Key files:
 

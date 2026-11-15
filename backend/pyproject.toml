@@ -25,8 +25,8 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    # Shared dev-runner + dev-Caddy helpers from ../infra (local dev only; Docker
-    # builds and exported requirements use --no-dev, so they never need ../infra).
+    # Shared dev-runner + dev-Caddy helpers from ../infra (local dev only;
+    # exported requirements use --no-dev, so they never need ../infra).
     "zt-devkit",
     "pytest>=8.3.5",
     "pytest-cov>=6.1.0",
