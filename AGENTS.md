@@ -77,4 +77,7 @@ Key files:
 - `backend/tests/test_schema.py` — fails if the models and the Alembic chain disagree;
   every model change needs a migration
 - Full backend suite runs in ~10 s (`cd backend && uv run pytest`)
-- Frontend: no tests; `cd frontend && npm run lint && npm run build` after any `.jsx` edit
+- Frontend: Vitest component tests beside each component (`*.test.jsx`, API client mocked via
+  `vi.mock('../api/client')`, `src/test/render.jsx` for providers);
+  `cd frontend && npm run lint && npm test && npm run build` after any `.jsx` edit
+- Tag/category slugs are derived server-side only (`app/services/slugs.py`); clients send names

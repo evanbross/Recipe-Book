@@ -138,7 +138,7 @@ a model change without a matching migration (or vice versa) can't slip through. 
 ### Pre-push gate
 
 There's no hosted CI. Instead, `.githooks/pre-push` runs the backend tests and/or the
-frontend lint + build, depending on what the push changes. Enable it once per clone:
+frontend lint + tests + build, depending on what the push changes. Enable it once per clone:
 
 ```bash
 git config core.hooksPath .githooks
@@ -148,12 +148,13 @@ Skip it for one push with `git push --no-verify` (e.g. when the test database is
 
 ### Frontend checks
 
-There are no frontend tests; lint and the production build are the checks. Run both
-after any `.jsx` change:
+Vitest + React Testing Library component tests live next to the components
+(`*.test.jsx`), with the API client mocked. Run all three after any `.jsx` change:
 
 ```bash
 cd frontend
 npm run lint    # ESLint: no-undef, rules-of-hooks, React Compiler purity rules
+npm test        # Vitest (npm run test:watch while iterating)
 npm run build
 ```
 
