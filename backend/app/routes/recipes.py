@@ -6,12 +6,11 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, schemas
 from app.services import image_candidates as img_cand_svc
+from app.services.media_types import SUPPORTED_IMAGE_MEDIA_TYPES  # ai: claude-opus-5-5 | 2026-11-15
 from app.services import scraper as scraper_svc
 from app.services import storage as storage_svc
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
-
-ALLOWED_MEDIA_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
 
 def _get_or_404(db: Session, recipe_id: int) -> models.Recipe:
@@ -93,7 +92,7 @@ def select_recipe_image(
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Failed to fetch image: {exc}")
 
-    if content_type not in ALLOWED_MEDIA_TYPES:
+    if content_type not in SUPPORTED_IMAGE_MEDIA_TYPES:
         raise HTTPException(status_code=415, detail=f"Unsupported image type: {content_type}")
 
     try:

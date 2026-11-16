@@ -165,6 +165,19 @@ def test_auto_apply_downloads_stores_and_clears_pending(db_session, make_recipe)
     tag.assert_called_once_with("originals/abc.jpg", "thumbnails/abc.jpg", recipe.id)
 
 
+# ai: claude-opus-5-5 | 2026-11-15
+def test_auto_apply_unsupported_type_is_not_stored(db_session, make_recipe):
+    recipe = _recipe_with_candidate(db_session, make_recipe, score=90)
+    _confirm_picks(db_session, 3)
+    with patch("app.services.image_candidates.scraper_svc.fetch_page_image",
+               return_value=(b"<svg/>", "image/svg+xml")), \
+            patch("app.services.image_candidates.storage_svc.upload_image") as upload:
+        assert svc.maybe_auto_apply(db_session, recipe) is False
+    upload.assert_not_called()
+    db_session.expire_all()
+    assert db_session.get(models.Recipe, recipe.id).image_pending is True
+
+
 def test_auto_apply_download_failure_leaves_recipe_pending(db_session, make_recipe):
     recipe = _recipe_with_candidate(db_session, make_recipe, score=90)
     _confirm_picks(db_session, 3)

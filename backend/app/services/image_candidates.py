@@ -54,6 +54,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.services import scraper as scraper_svc
 from app.services import storage as storage_svc
+from app.services.media_types import SUPPORTED_IMAGE_MEDIA_TYPES  # ai: claude-opus-5-5 | 2026-11-15
 
 logger = logging.getLogger(__name__)
 
@@ -313,6 +314,15 @@ def _apply_image_to_recipe(
     """Download candidate image, upload to MinIO, update recipe. Returns True on success."""
     try:
         img_bytes, content_type = scraper_svc.fetch_page_image(candidate.image_url)
+        # ai: claude-opus-5-5 | 2026-11-15
+        # Same gate as every other image path; leaves the recipe pending so the
+        # user can still pick a different candidate by hand.
+        if content_type not in SUPPORTED_IMAGE_MEDIA_TYPES:
+            logger.warning(
+                "Auto-apply skipped for recipe %d: unsupported image type '%s' (%s)",
+                recipe.id, content_type, candidate.image_url,
+            )
+            return False
         stored = storage_svc.upload_image(
             img_bytes,
             content_type,
