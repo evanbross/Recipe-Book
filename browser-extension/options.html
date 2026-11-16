@@ -1,0 +1,28 @@
+<!--
+  Copyright (c) 2026 ZombieTech LLC. All rights reserved.
+
+  SPDX-License-Identifier: PolyForm-Strict-1.0.0
+  See LICENSE in the project root for the full terms.
+
+  Licensing inquiries: license@zombietech.biz
+-->
+<!-- ai: claude-opus-5-5 | 2026-11-16 -->
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Recipe App Capture settings</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <h1>Recipe App Capture</h1>
+    <form id="form">
+        <label for="app-url">Recipe App address</label>
+        <input id="app-url" type="url" required spellcheck="false">
+        <p class="hint">The address you open the app at, e.g. <span id="default-url"></span></p>
+        <button type="submit">Save and test</button>
+    </form>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+    <script type="module" src="options.js"></script>
+</body>
+</html>

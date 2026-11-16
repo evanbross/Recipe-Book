@@ -12,7 +12,6 @@ from app.database import engine, get_db
 from app import models
 from app.routes import recipes, tags, capture, search, email_scan, watchlist, images
 from app.services import storage as storage_svc
-from app.services.capture_listener import start_capture_listener
 from app.services.storage import check_connectivity as check_minio
 
 logging.basicConfig(
@@ -42,7 +41,6 @@ async def lifespan(app: FastAPI):
         logger.critical("Startup check failed: %s", exc)
         sys.exit(1)
     logger.info("All dependency checks passed.")
-    start_capture_listener(capture.submit_listener_capture)  # ai: claude-opus-5-5 | 2026-11-15
     yield
 
 

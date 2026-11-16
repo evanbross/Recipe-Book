@@ -1,0 +1,189 @@
+/*!
+ * Copyright (c) 2026 ZombieTech LLC. All rights reserved.
+ *
+ * SPDX-License-Identifier: PolyForm-Strict-1.0.0
+ * See LICENSE in the project root for the full terms.
+ *
+ * Licensing inquiries: license@zombietech.biz
+ */
+
+/* ai: claude-opus-5-5 | 2026-11-16 */
+/* Shared by the popup and the options page. */
+:root {
+    color-scheme: light dark;
+    --fg: #1f2937;
+    --muted: #6b7280;
+    --accent: #ea580c;
+    --ok: #15803d;
+    --error: #b91c1c;
+    --bg: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --fg: #e5e7eb;
+        --muted: #9ca3af;
+        --accent: #fb923c;
+        --ok: #4ade80;
+        --error: #f87171;
+        --bg: #1f2937;
+    }
+}
+
+body {
+    width: 300px;
+    margin: 0;
+    padding: 12px 14px;
+    font: 14px/1.4 system-ui, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+}
+
+h1 {
+    margin: 0 0 4px;
+    font-size: 16px;
+}
+
+.page {
+    margin: 0 0 10px;
+    color: var(--muted);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+button:not(.link) {
+    width: 100%;
+    padding: 8px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.status:empty {
+    display: none;
+}
+
+.status.ok {
+    color: var(--ok);
+}
+
+.status.error {
+    color: var(--error);
+}
+
+.open {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--accent);
+}
+
+footer {
+    margin-top: 10px;
+    text-align: right;
+}
+
+.link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 12px;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+label {
+    display: block;
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+
+input {
+    box-sizing: border-box;
+    width: 100%;
+    margin-bottom: 4px;
+    padding: 6px;
+    font: inherit;
+}
+
+.hint {
+    margin: 0 0 10px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+/* ai: claude-opus-5-5 | 2026-11-16 */
+/* Tag picker */
+.tags {
+    margin: 0 0 10px;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+}
+
+.tags legend {
+    padding: 0;
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+
+.tags:disabled {
+    opacity: 0.6;
+}
+
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+#selected-tags:not(:empty) {
+    margin-bottom: 6px;
+}
+
+.tag-list {
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.group-label {
+    margin: 6px 0 3px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+button.chip {
+    width: auto;
+    padding: 2px 8px;
+    border: 1px solid var(--muted);
+    border-radius: 999px;
+    background: none;
+    color: var(--fg);
+    font-size: 12px;
+    font-weight: 400;
+}
+
+button.chip[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #fff;
+}
+
+.tag-list .hint {
+    margin: 4px 0 0;
+}

@@ -220,7 +220,7 @@ def parse_page_html(html: str, final_url: str) -> tuple[str, str | None, str, di
     Parse already-fetched page HTML into (cleaned_text, og_image_url, final_url, jsonld_recipe).
 
     Split out of fetch_page() so HTML the user's own browser loaded (sent by the
-    userscript or an extension) goes through exactly the same parsing as a
+    browser extension) goes through exactly the same parsing as a
     server-side fetch. final_url is used to resolve relative image URLs.
     """
     soup = BeautifulSoup(html, "html.parser")

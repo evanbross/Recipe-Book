@@ -79,7 +79,6 @@ _TEST_ENV = {
     "MINIO_BUCKET_NAME": "test-bucket",
     "SECRET_KEY": "test-secret-key",
     "CORS_ORIGINS": "http://localhost:5173",
-    "CAPTURE_LISTENER_ENABLED": "false",
 }
 os.environ.update(_TEST_ENV)
 

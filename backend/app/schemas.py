@@ -125,8 +125,7 @@ class CaptureUrlRequest(BaseModel):
 # ai: claude-opus-5-5 | 2026-11-15
 # Upper bound on page HTML a client may send for capture. Recipe blog pages are
 # typically 0.3-2 MB of HTML; 5 MB leaves headroom without letting one request
-# hold an unbounded string in memory. The userscript listener sizes its body
-# limit from this too.
+# hold an unbounded string in memory.
 MAX_CAPTURE_HTML_CHARS = 5 * 1024 * 1024
 
 

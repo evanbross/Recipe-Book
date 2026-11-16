@@ -4,13 +4,13 @@ All paths run through Claude vision extraction and store results in PostgreSQL +
 """
 import logging
 from datetime import datetime, UTC
-from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 
-from app.database import current_tenant_id, default_tenant_session, get_db  # ai: claude-opus-5-5 | 2026-11-16
+from app.database import current_tenant_id, get_db  # ai: claude-opus-5-5 | 2026-11-16
 from app import models, schemas
 from app.services import vision as vision_svc
 from app.services import storage as storage_svc
@@ -30,25 +30,48 @@ def _trunc(value: str | None, max_len: int) -> str:
     return value[:max_len] if value else ""
 
 
-# ai: claude-opus-5-5 | 2026-11-15
-_BLOCKED_HINT = (
-    "Some sites block automated access; capture it from your browser with the "
-    "userscript, or upload a screenshot instead."
-)
+# ai: claude-opus-5-5 | 2026-11-16
+# Statuses bot-protection layers (Cloudflare, Akamai, Dotdash Meredith's 402)
+# answer automated fetches with. Only these get the "use your browser" advice;
+# a 404 or 500 means something else and must not send the user off to the extension.
+_BLOCKED_STATUSES: frozenset[int] = frozenset({401, 402, 403, 429})
+_NOT_FOUND_STATUSES: frozenset[int] = frozenset({404, 410})
 
 
-def capture_error_response(exc: Exception) -> tuple[int, str]:
+# ai: claude-opus-5-5 | 2026-11-16
+def _site_name(url: str) -> str:
+    """'https://www.seriouseats.com/x' -> 'seriouseats.com', for user-facing messages."""
+    host = urlparse(url).hostname or "The site"
+    return host.removeprefix("www.")
+
+
+# ai: claude-opus-5-5 | 2026-11-16
+def _fetch_error_message(exc: PageFetchError) -> str:
+    site = _site_name(exc.url)
+    if exc.status_code is None:
+        return f"Failed to fetch URL: could not reach {site}."
+    if exc.status_code in _BLOCKED_STATUSES:
+        return (
+            f"{site} blocks automated downloads (HTTP {exc.status_code}), so the app can't fetch "
+            "this page itself. Open the recipe in your browser and capture it with the Recipe App "
+            "Capture browser extension, or upload a screenshot of the recipe instead."
+        )
+    if exc.status_code in _NOT_FOUND_STATUSES:
+        return f"Failed to fetch URL: {site} says the page doesn't exist (HTTP {exc.status_code}). Check the link."
+    return f"Failed to fetch URL: {site} returned an error (HTTP {exc.status_code}). Try again later."
+
+
+# ai: claude-opus-5-5 | 2026-11-16
+def _capture_error_response(exc: Exception) -> tuple[int, str]:
     """Map a capture-service error to (HTTP status, user-facing message).
 
-    Shared by the HTTP routes and the userscript listener so both report the
-    same thing. Messages stay generic: details go to the server log only.
+    Shared by /capture/url and /capture/html (the browser extension's route) so
+    both report the same thing. Messages stay generic: details go to the server log only.
     """
     if isinstance(exc, UnsafeURLError):
         return 400, "URL not allowed: it points to a private or local address."
     if isinstance(exc, PageFetchError):
-        if exc.status_code is not None:
-            return 422, f"Failed to fetch URL: the site refused the request (HTTP {exc.status_code}). {_BLOCKED_HINT}"
-        return 422, "Failed to fetch URL: could not reach the site."
+        return 422, _fetch_error_message(exc)  # ai: claude-opus-5-5 | 2026-11-16
     if isinstance(exc, RecipeExtractionError):
         return 422, "Claude extraction failed."
     if isinstance(exc, RecipeSaveError):
@@ -66,7 +89,7 @@ def capture_from_url(payload: schemas.CaptureUrlRequest, db: Session = Depends(g
     try:
         return RecipeCaptureService(db).capture_url(payload.url, payload.tag_ids)
     except _CAPTURE_ERRORS as exc:
-        status_code, detail = capture_error_response(exc)
+        status_code, detail = _capture_error_response(exc)
         raise HTTPException(status_code=status_code, detail=detail)
 
 
@@ -81,30 +104,8 @@ def capture_from_html(payload: schemas.CaptureHtmlRequest, db: Session = Depends
     try:
         return RecipeCaptureService(db).capture_html(payload.url, payload.html, payload.tag_ids)
     except _CAPTURE_ERRORS as exc:
-        status_code, detail = capture_error_response(exc)
+        status_code, detail = _capture_error_response(exc)
         raise HTTPException(status_code=status_code, detail=detail)
-
-
-# ai: claude-opus-5-5 | 2026-11-16
-def submit_listener_capture(body: dict[str, Any]) -> tuple[dict[str, Any], int]:
-    """Capture callback for the userscript listener (its own thread, so its own session).
-
-    The listener only accepts localhost connections and has no login, so captures
-    land in the default household. Uses the page HTML when the userscript sent it,
-    otherwise fetches the URL.
-    """
-    with default_tenant_session() as db:
-        service = RecipeCaptureService(db)
-        try:
-            html = body.get("html")
-            if html:
-                recipe = service.capture_html(body["url"], html, body["tag_ids"])
-            else:
-                recipe = service.capture_url(body["url"], body["tag_ids"])
-        except _CAPTURE_ERRORS as exc:
-            status_code, detail = capture_error_response(exc)
-            return {"detail": detail}, status_code
-        return schemas.RecipeOut.model_validate(recipe).model_dump(mode="json"), 200
 
 
 @router.post("/scan", response_model=schemas.ScanResponse)

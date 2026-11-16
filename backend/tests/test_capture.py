@@ -1,4 +1,3 @@
-from contextlib import nullcontext
 from unittest.mock import patch
 
 import httpx
@@ -6,7 +5,6 @@ import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import models
-from app.routes.capture import submit_listener_capture
 from app.schemas import CaptureResult
 from app.services.claude_client import ClaudeRefusalError
 
@@ -60,7 +58,27 @@ def test_capture_url_blocked_site_reports_status_and_alternatives(client):
     assert response.status_code == 422
     detail = response.json()["detail"]
     assert "HTTP 403" in detail
-    assert "userscript" in detail
+    assert "example.com blocks automated downloads" in detail  # ai: claude-opus-5-5 | 2026-11-16
+    assert "browser extension" in detail
+    assert "screenshot" in detail
+
+
+# ai: claude-opus-5-5 | 2026-11-16
+@pytest.mark.parametrize(("status", "expected"), [
+    (404, "page doesn't exist (HTTP 404)"),
+    (500, "returned an error (HTTP 500)"),
+])
+def test_capture_url_non_blocking_http_errors_do_not_suggest_extension(client, status, expected):
+    request = httpx.Request("GET", "https://www.example.com/recipe")
+    failed = httpx.HTTPStatusError(str(status), request=request, response=httpx.Response(status, request=request))
+    with patch("app.services.recipe_capture.scraper_svc.fetch_page", side_effect=failed):
+        response = client.post("/capture/url", json={"url": "https://www.example.com/recipe"})
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert expected in detail
+    assert "example.com" in detail and "www." not in detail
+    assert "extension" not in detail
 
 
 @pytest.mark.parametrize("error", [ValueError("unparseable reply"), ClaudeRefusalError("declined")])
@@ -185,6 +203,19 @@ def test_capture_html_uses_supplied_html_without_fetching_the_page(client):
     assert [t["name"] for t in payload["tags"]] == ["Example"]
 
 
+# ai: claude-opus-5-5 | 2026-11-16
+def test_capture_html_attaches_requested_tags(client, make_tag):
+    # The browser extension's tag picker sends tag_ids with the page HTML.
+    soup_tag = make_tag(name="Soup", slug="soup")
+
+    response = client.post("/capture/html", json={
+        "url": "https://www.example.com/soup", "html": _JSONLD_PAGE, "tag_ids": [soup_tag.id],
+    })
+
+    assert response.status_code == 200, response.text
+    assert sorted(t["name"] for t in response.json()["tags"]) == ["Example", "Soup"]
+
+
 @pytest.mark.parametrize("body", [
     {"url": "javascript:alert(1)", "html": "<p>x</p>"},
     {"url": "https://example.com/r", "html": ""},
@@ -209,29 +240,6 @@ def test_capture_save_failure_discards_the_uploaded_image(client, capture_result
 
     assert response.status_code == 500
     delete.assert_called_once_with("originals/x.jpg", "thumbnails/x.jpg")
-
-
-def test_listener_submission_with_html_captures_from_it(db_session):
-    with patch("app.routes.capture.default_tenant_session", return_value=nullcontext(db_session)), \
-            patch("app.services.recipe_capture.scraper_svc.fetch_page") as fetch:
-        result, status_code = submit_listener_capture(
-            {"url": "https://www.example.com/soup", "tag_ids": [], "html": _JSONLD_PAGE})
-
-    assert status_code == 200
-    fetch.assert_not_called()
-    assert result["title"] == "Browser Soup"
-    assert db_session.query(models.Recipe).count() == 1
-
-
-def test_listener_submission_reports_blocked_site(db_session):
-    request = httpx.Request("GET", "https://example.com/r")
-    refused = httpx.HTTPStatusError("402", request=request, response=httpx.Response(402, request=request))
-    with patch("app.routes.capture.default_tenant_session", return_value=nullcontext(db_session)), \
-            patch("app.services.recipe_capture.scraper_svc.fetch_page", side_effect=refused):
-        result, status_code = submit_listener_capture({"url": "https://example.com/r", "tag_ids": [], "html": None})
-
-    assert status_code == 422
-    assert "HTTP 402" in result["detail"]
 
 
 # ── Image capture — existing tests ────────────────────────────────────────────

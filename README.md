@@ -71,6 +71,26 @@ The frontend calls the API at the relative path `/api`, and Vite has no proxy fo
 so **the UI only works through Caddy**. Without Caddy, only the backend is usable
 (directly on its port).
 
+### Browser extension (capture from your browser)
+
+Some sites (Serious Eats, Allrecipes and other Dotdash Meredith sites) block the app's
+own page fetch with HTTP 402/403. The **Recipe App Capture** extension in
+`browser-extension/` sends the page as your browser already loaded it to
+`POST /capture/html` instead, so those sites work too.
+
+Install it in Chrome or Edge (version 116 or later):
+
+1. Open `chrome://extensions` (or `edge://extensions`) and turn on **Developer mode**.
+2. Click **Load unpacked** and choose the `browser-extension/` folder.
+3. Pin the extension, open a recipe page, click the icon, pick any tags and press
+   **Capture recipe**. (The site's source tag is added automatically.)
+
+The capture keeps running if you close the popup. The icon shows … while it works,
+✓ when the recipe is saved, and ! on an error (open the popup to read it). It posts to
+`http://recipe-app.localhost` by default; if `CADDY_APP_NAME` is different, set the
+address under **Settings** in the popup, which also tests the connection. After you
+change any file in `browser-extension/`, click the reload icon on the extension's card.
+
 ---
 
 ## Configuration
@@ -86,7 +106,6 @@ key with comments. If `.env` is missing, the backend writes a template and exits
 | Image storage | `MINIO_*` | Endpoint, keys and bucket. The bucket stays private: images are served through the API (`GET /images/{key}`) |
 | Households | `DEFAULT_TENANT_SLUG`, `API_PUBLIC_PREFIX` | Household every request acts for until login exists (default `default`); path the browser reaches the API under (default `/api`) |
 | App | `SECRET_KEY`, `CORS_ORIGINS` | |
-| Capture listener | `CAPTURE_LISTENER_*` | Local port the Tampermonkey userscript posts captures (URL + page HTML) to |
 | Caddy | `CADDY_APP_NAME` | App hostname (`<name>.localhost`) |
 | Email scanning | `GOOGLE_OAUTH_REDIRECT_URI`, `EMAIL_SCAN_*` | Gmail OAuth; credentials go in `backend/credentials/` |
 
@@ -292,7 +311,7 @@ Recipe App/
 │   │   ├── models/          # ORM models
 │   │   ├── routes/          # recipes, tags, capture, search, email_scan, watchlist
 │   │   └── services/        # vision (Claude), storage (MinIO), scraper, sources,
-│   │                        # tagger, gmail_client, capture_listener, ...
+│   │                        # tagger, gmail_client, recipe_capture, ...
 │   ├── alembic/             # DB migrations
 │   ├── tests/               # pytest integration suite
 │   ├── scripts/             # backup_minio.py
@@ -306,5 +325,5 @@ Recipe App/
 │   │   ├── pages/           # Home, RecipeDetail, AddRecipe, Search, Settings
 │   │   └── utils/
 │   └── package.json
-└── tampermonkey/            # Userscript that sends pages to the capture listener
+└── browser-extension/       # Chrome/Edge extension: capture the open tab via /capture/html
 ```

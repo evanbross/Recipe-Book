@@ -1,0 +1,35 @@
+<!--
+  Copyright (c) 2026 ZombieTech LLC. All rights reserved.
+
+  SPDX-License-Identifier: PolyForm-Strict-1.0.0
+  See LICENSE in the project root for the full terms.
+
+  Licensing inquiries: license@zombietech.biz
+-->
+<!-- ai: claude-opus-5-5 | 2026-11-16 -->
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Recipe App Capture</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <h1>Recipe App</h1>
+    <p id="page" class="page"></p>
+    <!-- ai: claude-opus-5-5 | 2026-11-16 -->
+    <fieldset id="tags" class="tags">
+        <legend>Tags</legend>
+        <div id="selected-tags" class="chips"></div>
+        <input id="tag-filter" type="search" placeholder="Filter tags…" aria-label="Filter tags">
+        <div id="tag-list" class="tag-list"></div>
+    </fieldset>
+    <button id="capture" type="button">Capture recipe</button>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+    <a id="open" class="open" target="_blank" rel="noopener" hidden>Open in Recipe App</a>
+    <footer>
+        <button id="settings" type="button" class="link">Settings</button>
+    </footer>
+    <script type="module" src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Recipe App Capture",
+  "version": "1.0.0",
+  "description": "Save the recipe on the open page to Recipe App, using the page exactly as your browser loaded it.",
+  "minimum_chrome_version": "116",
+  "action": {
+    "default_title": "Capture recipe",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["http://recipe-app.localhost/*"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"]
+}
