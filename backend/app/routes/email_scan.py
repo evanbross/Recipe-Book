@@ -60,11 +60,10 @@ from app.services.gmail_client import GmailClient, NotAuthenticatedError
 from app.services.recipe_email_parser import parse_recipe_from_email, parse_recipe_from_page
 from app.services.email_link_extractor import extract_recipe_links
 from app.services import image_candidates as img_cand_svc
+from app.services.media_types import SUPPORTED_IMAGE_MEDIA_TYPES  # ai: claude-opus-5-5 | 2026-11-15
 from app.services import scraper as scraper_svc
 from app.services import storage as storage_svc
 from app.services import vision as vision_svc
-
-_ALLOWED_MEDIA_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
 logger = logging.getLogger(__name__)
 
@@ -562,7 +561,7 @@ def _scrape_linked_recipes(
         if og_image_url:
             try:
                 img_bytes, content_type = scraper_svc.fetch_page_image(og_image_url)
-                if content_type in _ALLOWED_MEDIA_TYPES:
+                if content_type in SUPPORTED_IMAGE_MEDIA_TYPES:
                     minio_stored = storage_svc.upload_image(
                         img_bytes,
                         content_type,

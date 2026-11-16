@@ -16,13 +16,13 @@ from app.services import vision as vision_svc
 from app.services import storage as storage_svc
 from app.services import scraper as scraper_svc
 from app.services import sources as sources_svc
+from app.services.media_types import SUPPORTED_IMAGE_MEDIA_TYPES  # ai: claude-opus-5-5 | 2026-11-15
 from app.services.url_guard import UnsafeURLError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/capture", tags=["capture"])
 
-ALLOWED_MEDIA_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
 def _trunc(value: str | None, max_len: int) -> str:
     return value[:max_len] if value else ""
@@ -82,7 +82,7 @@ def capture_from_url(payload: schemas.CaptureUrlRequest, db: Session = Depends(g
         if image_url:
             try:
                 img_bytes, content_type = scraper_svc.fetch_page_image(image_url)
-                if content_type not in ALLOWED_MEDIA_TYPES:
+                if content_type not in SUPPORTED_IMAGE_MEDIA_TYPES:
                     logger.warning(
                         "[capture] Image at %s has unsupported type '%s' — skipping MinIO upload",
                         image_url, content_type,
@@ -207,7 +207,7 @@ async def capture_from_image(
     Accept an uploaded image or scan, send to Claude vision, store in MinIO, save recipe.
     """
     media_type = file.content_type or "image/jpeg"
-    if media_type not in ALLOWED_MEDIA_TYPES:
+    if media_type not in SUPPORTED_IMAGE_MEDIA_TYPES:
         raise HTTPException(status_code=415, detail=f"Unsupported media type: {media_type}")
 
     image_bytes = await file.read()
