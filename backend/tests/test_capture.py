@@ -1,4 +1,3 @@
-from contextlib import nullcontext
 from unittest.mock import patch
 
 import httpx
@@ -6,7 +5,6 @@ import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import models
-from app.routes.capture import submit_listener_capture
 from app.schemas import CaptureResult
 from app.services.claude_client import ClaudeRefusalError
 
@@ -229,30 +227,6 @@ def test_capture_save_failure_discards_the_uploaded_image(client, capture_result
 
     assert response.status_code == 500
     delete.assert_called_once_with("originals/x.jpg", "thumbnails/x.jpg")
-
-
-def test_listener_submission_with_html_captures_from_it(db_session):
-    with patch("app.routes.capture.default_tenant_session", return_value=nullcontext(db_session)), \
-            patch("app.services.recipe_capture.scraper_svc.fetch_page") as fetch:
-        result, status_code = submit_listener_capture(
-            {"url": "https://www.example.com/soup", "tag_ids": [], "html": _JSONLD_PAGE})
-
-    assert status_code == 200
-    fetch.assert_not_called()
-    assert result["title"] == "Browser Soup"
-    assert db_session.query(models.Recipe).count() == 1
-
-
-def test_listener_submission_reports_blocked_site(db_session):
-    request = httpx.Request("GET", "https://example.com/r")
-    refused = httpx.HTTPStatusError("402", request=request, response=httpx.Response(402, request=request))
-    with patch("app.routes.capture.default_tenant_session", return_value=nullcontext(db_session)), \
-            patch("app.services.recipe_capture.scraper_svc.fetch_page", side_effect=refused):
-        result, status_code = submit_listener_capture({"url": "https://example.com/r", "tag_ids": [], "html": None})
-
-    assert status_code == 422
-    assert "HTTP 402" in result["detail"]
-    assert "blocks automated downloads" in result["detail"]  # ai: claude-opus-5-5 | 2026-11-16
 
 
 # ── Image capture — existing tests ────────────────────────────────────────────

@@ -138,21 +138,9 @@ def get_db() -> Generator[Session, None, None]:
 
 @contextmanager
 def tenant_session(tenant_id: int) -> Iterator[Session]:
-    """A session bound to a household, for work outside a request (threads, listeners)."""
+    """A session bound to a household, for work outside a request (background threads)."""
     db = bind_tenant(SessionLocal(), tenant_id)
     try:
-        yield db
-    finally:
-        db.close()
-
-
-@contextmanager
-def default_tenant_session() -> Iterator[Session]:
-    """A session bound to the default household, for local single-user entry points
-    with no login of their own (the userscript listener)."""
-    db = SessionLocal()
-    try:
-        bind_tenant(db, resolve_default_tenant_id(db))
         yield db
     finally:
         db.close()

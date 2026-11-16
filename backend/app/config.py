@@ -82,11 +82,6 @@ MINIO_BUCKET_NAME=recipe-images
 SECRET_KEY=change-this-to-a-random-secret-key
 CORS_ORIGINS=http://localhost:5174
 
-# Tampermonkey capture listener (separate port from the main API)
-CAPTURE_LISTENER_ENABLED=true
-CAPTURE_LISTENER_HOST=127.0.0.1
-CAPTURE_LISTENER_PORT=8001
-
 # Caddy reverse proxy: main.py registers http://<CADDY_APP_NAME>.localhost with the
 # shared ../infra Caddy (zt-devkit's caddy_registry, from ../infra/devkit, finds its admin port).
 # /api/* and /* go to free ports chosen at each startup (FastAPI, Vite).
@@ -136,10 +131,6 @@ class Settings(BaseSettings):
     default_tenant_slug: str = "default"
     secret_key: str
     cors_origins: str = "http://localhost:5174"
-
-    capture_listener_enabled: bool = True
-    capture_listener_host: str = "127.0.0.1"
-    capture_listener_port: int = 8001
 
     # Gmail / email scanning
     google_oauth_redirect_uri: str = "http://localhost:8088/email/auth/callback"

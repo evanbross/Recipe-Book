@@ -13,16 +13,15 @@ Recipe capture from a web page: the one implementation behind every entry point.
 Two ways in, one pipeline:
   - capture_url():  the server fetches the page itself.
   - capture_html(): the caller supplies HTML its own browser already loaded
-    (userscript today, a browser extension later), for sites that refuse
-    server-side fetches.
+    (the browser extension), for sites that refuse server-side fetches.
 
 Both parse the page, extract the recipe (JSON-LD first, Claude for the gaps),
 resolve the Source tag, store the page image, and save the recipe.
 
 All slow external work (page fetch, Claude, image download/upload) runs before
 the first DB query, so no pooled connection is held across it. Errors are raised
-as the domain exceptions below; transports (HTTP routes, the userscript listener)
-decide the status code.
+as the domain exceptions below; the HTTP routes decide
+the status code.
 """
 import logging
 from dataclasses import dataclass

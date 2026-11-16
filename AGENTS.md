@@ -26,7 +26,8 @@ PostgreSQL via SQLAlchemy 2.0; migrations managed by Alembic.
 Images stored in **MinIO** (S3-compatible, served by the sibling `../infra` stack).
 Cloudflare R2 is a possible future target only — it is not wired up; do not write R2
 code unless asked. Recipe extraction powered by the Anthropic Claude API (vision + text).
-Recipes can also be harvested from Gmail newsletters and from a Tampermonkey userscript.
+Recipes can also be harvested from Gmail newsletters and from the browser extension (`browser-extension/`), which
+sends the page HTML the user's browser loaded to `/capture/html`.
 
 **Multi-tenant (households).** Every household-owned table has `tenant_id`, and every ORM
 session is bound to one household (`backend/app/database/tenancy.py`). Queries are scoped
@@ -36,8 +37,7 @@ so routes and services do **not** filter by tenant by hand. Rules when adding co
   uniqueness rule start with `tenant_id`.
 - Core statements (`pg_insert(...)`, `text(...)`) are **not** auto-scoped: set/filter
   `tenant_id` explicitly (`current_tenant_id(db)`).
-- Work outside a request (threads, listeners) opens `tenant_session(tenant_id)` or
-  `default_tenant_session()`; a session with no household fails closed (`TenantNotSetError`).
+- Work outside a request (background threads) opens `tenant_session(tenant_id)`; a session with no household fails closed (`TenantNotSetError`).
   `all_tenants_session()` is the explicit opt-out for system work spanning households.
 - Until login exists every request resolves to the default household
   (`resolve_request_tenant_id`). Gmail is still one connection per server.
@@ -51,7 +51,7 @@ Key files:
 
 **Backend**
 - `backend/app/main.py` — FastAPI app, lifespan startup checks, router registration
-- `backend/app/config.py` — Pydantic Settings (DB, Anthropic, MinIO, CORS, capture listener, Gmail scan)
+- `backend/app/config.py` — Pydantic Settings (DB, Anthropic, MinIO, CORS, Gmail scan)
 - `backend/app/database/database.py` — SQLAlchemy engine and session factory
 - `backend/app/database/tenancy.py` — Tenant/User/TenantMembership models, `TenantScoped` mixin, household scoping hooks, `get_db`
 - `backend/app/schemas.py` — Pydantic request/response schemas (the only schemas module)
@@ -66,7 +66,7 @@ Key files:
 - `backend/app/routes/watchlist.py` — Sites to revisit on a schedule (`/watchlist`)
 - `backend/app/services/claude_client.py` — the only Claude caller: `CLAUDE_MODEL` setting, refusal fallbacks, text-block extraction
 - `backend/app/services/vision.py` — Claude extraction from images or page text
-- `backend/app/services/recipe_capture.py` — `RecipeCaptureService`: the one web-page capture pipeline (server fetch or browser-supplied HTML) behind `/capture/url`, `/capture/html` and the userscript listener
+- `backend/app/services/recipe_capture.py` — `RecipeCaptureService`: the one web-page capture pipeline (server fetch or browser-supplied HTML) behind `/capture/url` and `/capture/html`
 - `backend/app/services/scraper.py` — httpx + BeautifulSoup page fetching; `parse_page_html` parses HTML from any source
 - `backend/app/services/sources.py` — Derives source tags from recipe URLs
 - `backend/app/services/tagger.py` — Claude tag suggestions
@@ -75,7 +75,6 @@ Key files:
 - `backend/app/services/email_link_extractor.py` — Heuristics for recipe URLs in email HTML
 - `backend/app/services/recipe_email_parser.py` — Claude extraction from email bodies
 - `backend/app/services/image_candidates.py` — Image scoring + per-sender image preference learning
-- `backend/app/services/capture_listener.py` — Localhost HTTP listener for the Tampermonkey userscript (accepts the page HTML)
 - `backend/app/services/media_types.py` — The image media types accepted everywhere (= what Claude vision accepts)
 - `backend/scripts/backup_minio.py` — MinIO backup / restore to any S3-compatible store
 - `backend/credentials/` — OAuth credentials and tokens; everything here is git-ignored
@@ -88,7 +87,7 @@ Key files:
   EmailScanTab, ImagePickerDialog, WatchlistAlert
 
 **Other**
-- `tampermonkey/recipe-capture.user.js` — Userscript that posts pages to the capture listener
+- `browser-extension/` — Chrome/Edge MV3 extension: captures the open tab's HTML and posts it to `/capture/html`
 - `launcher.py` — Tkinter GUI wrapper around `main.py`
 
 **Tests**

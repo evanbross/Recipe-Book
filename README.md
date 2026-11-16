@@ -86,7 +86,6 @@ key with comments. If `.env` is missing, the backend writes a template and exits
 | Image storage | `MINIO_*` | Endpoint, keys and bucket. The bucket stays private: images are served through the API (`GET /images/{key}`) |
 | Households | `DEFAULT_TENANT_SLUG`, `API_PUBLIC_PREFIX` | Household every request acts for until login exists (default `default`); path the browser reaches the API under (default `/api`) |
 | App | `SECRET_KEY`, `CORS_ORIGINS` | |
-| Capture listener | `CAPTURE_LISTENER_*` | Local port the Tampermonkey userscript posts captures (URL + page HTML) to |
 | Caddy | `CADDY_APP_NAME` | App hostname (`<name>.localhost`) |
 | Email scanning | `GOOGLE_OAUTH_REDIRECT_URI`, `EMAIL_SCAN_*` | Gmail OAuth; credentials go in `backend/credentials/` |
 
@@ -292,7 +291,7 @@ Recipe App/
 │   │   ├── models/          # ORM models
 │   │   ├── routes/          # recipes, tags, capture, search, email_scan, watchlist
 │   │   └── services/        # vision (Claude), storage (MinIO), scraper, sources,
-│   │                        # tagger, gmail_client, capture_listener, ...
+│   │                        # tagger, gmail_client, recipe_capture, ...
 │   ├── alembic/             # DB migrations
 │   ├── tests/               # pytest integration suite
 │   ├── scripts/             # backup_minio.py
@@ -306,5 +305,5 @@ Recipe App/
 │   │   ├── pages/           # Home, RecipeDetail, AddRecipe, Search, Settings
 │   │   └── utils/
 │   └── package.json
-└── tampermonkey/            # Userscript that sends pages to the capture listener
+└── browser-extension/       # Chrome/Edge extension: capture the open tab via /capture/html
 ```
