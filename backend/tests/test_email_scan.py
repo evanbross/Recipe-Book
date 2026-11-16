@@ -155,13 +155,15 @@ def test_start_scan_requires_gmail_token(client, tmp_path, idle_scan, no_thread)
     no_thread.assert_not_called()
 
 
-def test_start_scan_starts_thread_with_stored_settings(client, token_file, idle_scan, no_thread):
+def test_start_scan_starts_thread_with_stored_settings(client, db_session, token_file, idle_scan, no_thread):
     client.patch("/email/settings", json={"labels": ["Baking"], "max_per_folder": 5})
     res = client.post("/email/scan")
     assert res.status_code == 202
     no_thread.return_value.start.assert_called_once()
     args = no_thread.call_args.kwargs["args"]
-    assert args[1] == ["Baking"] and args[4] == 5
+    # ai: claude-opus-5-5 | 2026-11-16 -- args[0] is the household the scan runs for
+    assert args[0] == db_session.info["tenant_id"]
+    assert args[2] == ["Baking"] and args[5] == 5
     assert client.get("/email/scan/status").json()["running"] is True
 
 

@@ -37,6 +37,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app import models
+from app.database import current_tenant_id  # ai: claude-opus-5-5 | 2026-11-16
 from app.schemas import CaptureResult
 from app.services import scraper as scraper_svc
 from app.services import sources as sources_svc
@@ -157,8 +158,7 @@ class RecipeCaptureService:
                 return urljoin(page.final_url, jsonld_image)
         return None
 
-    @staticmethod
-    def _store_image(image_url: str, extracted: CaptureResult, source_url: str) -> dict[str, str] | None:
+    def _store_image(self, image_url: str, extracted: CaptureResult, source_url: str) -> dict[str, str] | None:
         """Download the page image into MinIO. Non-fatal: None means "link the external URL instead"."""
         try:
             img_bytes, content_type = scraper_svc.fetch_page_image(image_url)
@@ -168,6 +168,7 @@ class RecipeCaptureService:
             return storage_svc.upload_image(
                 img_bytes,
                 content_type,
+                tenant_id=current_tenant_id(self._db),  # ai: claude-opus-5-5 | 2026-11-16
                 metadata={
                     "recipe-title": _trunc(extracted.title, 512),
                     "source-type": "web",

@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from unittest.mock import patch
 
 import httpx
@@ -103,12 +104,7 @@ def test_capture_url_with_tags(client, make_tag, capture_result):
 
 def test_capture_url_og_image_stored_in_minio(client, capture_result):
     """OG image is downloaded and stored; recipe gets MinIO keys, not external URL."""
-    uploaded = {
-        "image_key": "originals/abc.jpg",
-        "image_url": "http://minio/recipe-images/originals/abc.jpg",
-        "thumbnail_key": "thumbnails/abc.jpg",
-        "thumbnail_url": "http://minio/recipe-images/thumbnails/abc.jpg",
-    }
+    uploaded = {"image_key": "tenants/1/originals/abc.jpg", "thumbnail_key": "tenants/1/thumbnails/abc.jpg"}
     with (
         patch("app.services.recipe_capture.scraper_svc.fetch_page",
               return_value=("page text", "https://example.com/image.jpg", "https://example.com/recipe", None)),
@@ -122,8 +118,10 @@ def test_capture_url_og_image_stored_in_minio(client, capture_result):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["image_url"] == "http://minio/recipe-images/originals/abc.jpg"
-    assert payload["thumbnail_url"] == "http://minio/recipe-images/thumbnails/abc.jpg"
+    # ai: claude-opus-5-5 | 2026-11-16 -- stored images are served through the API, never MinIO
+    assert payload["image_url"] == "/api/images/tenants/1/originals/abc.jpg"
+    assert payload["thumbnail_url"] == "/api/images/tenants/1/thumbnails/abc.jpg"
+    assert "image_key" not in payload
 
 
 def test_capture_url_og_image_download_fails_uses_external_url(client, capture_result):
@@ -214,7 +212,7 @@ def test_capture_save_failure_discards_the_uploaded_image(client, capture_result
 
 
 def test_listener_submission_with_html_captures_from_it(db_session):
-    with patch("app.routes.capture.SessionLocal", return_value=db_session), \
+    with patch("app.routes.capture.default_tenant_session", return_value=nullcontext(db_session)), \
             patch("app.services.recipe_capture.scraper_svc.fetch_page") as fetch:
         result, status_code = submit_listener_capture(
             {"url": "https://www.example.com/soup", "tag_ids": [], "html": _JSONLD_PAGE})
@@ -228,7 +226,7 @@ def test_listener_submission_with_html_captures_from_it(db_session):
 def test_listener_submission_reports_blocked_site(db_session):
     request = httpx.Request("GET", "https://example.com/r")
     refused = httpx.HTTPStatusError("402", request=request, response=httpx.Response(402, request=request))
-    with patch("app.routes.capture.SessionLocal", return_value=db_session), \
+    with patch("app.routes.capture.default_tenant_session", return_value=nullcontext(db_session)), \
             patch("app.services.recipe_capture.scraper_svc.fetch_page", side_effect=refused):
         result, status_code = submit_listener_capture({"url": "https://example.com/r", "tag_ids": [], "html": None})
 
@@ -239,12 +237,7 @@ def test_listener_submission_reports_blocked_site(db_session):
 # ── Image capture — existing tests ────────────────────────────────────────────
 
 def test_capture_image_success(client, capture_result):
-    uploaded = {
-        "image_key": "originals/test.jpg",
-        "image_url": "https://cdn.example.com/originals/test.jpg",
-        "thumbnail_key": "thumbnails/test.jpg",
-        "thumbnail_url": "https://cdn.example.com/thumbnails/test.jpg",
-    }
+    uploaded = {"image_key": "tenants/1/originals/test.jpg", "thumbnail_key": "tenants/1/thumbnails/test.jpg"}
 
     with (
         patch("app.routes.capture.vision_svc.extract_from_image_bytes",
@@ -260,7 +253,7 @@ def test_capture_image_success(client, capture_result):
     payload = response.json()
     assert response.status_code == 200
     assert payload["source_type"] == "image"
-    assert payload["image_url"] == "https://cdn.example.com/originals/test.jpg"
+    assert payload["image_url"] == "/api/images/tenants/1/originals/test.jpg"
 
 
 def test_capture_image_unsupported_media_type(client):

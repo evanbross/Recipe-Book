@@ -39,11 +39,12 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.config import GMAIL_SCOPES, GOOGLE_CREDENTIALS_FILE, GOOGLE_TOKEN_FILE, settings
-from app.database import SessionLocal, get_db
+from app.database import SessionLocal, bind_tenant, current_tenant_id, get_db  # ai: claude-opus-5-5 | 2026-11-16
 from app import models
 from app.schemas import (
     EmailAuthStatus,
@@ -86,6 +87,11 @@ _scan_status: dict[str, Any] = {
     "last_completed": None,
 }
 _scan_log: list[dict[str, Any]] = []  # per-email log for the most recent scan
+# ai: claude-opus-5-5 | 2026-11-16
+# The Gmail connection is still one per server, so one scan runs at a time. The
+# status and per-email log (subjects, senders) belong to the household that ran
+# it and are only shown to that household.
+_scan_owner_tenant_id: int | None = None
 _scan_log_lock = threading.Lock()
 _scan_lock = threading.Lock()
 
@@ -177,9 +183,12 @@ def start_scan(db: Session = Depends(get_db)) -> dict[str, str]:
     lookback = int(_get_setting(db, "email_inbox_lookback_days", str(settings.email_scan_inbox_lookback_days)))
     max_per_folder = int(_get_setting(db, "email_scan_max_per_folder", str(settings.email_scan_max_per_folder)))
 
+    global _scan_owner_tenant_id
+    tenant_id = current_tenant_id(db)
     with _scan_lock:
         if _scan_status["running"]:
             raise HTTPException(status_code=409, detail="A scan is already running.")
+        _scan_owner_tenant_id = tenant_id  # ai: claude-opus-5-5 | 2026-11-16
         _scan_status.update({
             "running": True,
             "processed": 0,
@@ -196,7 +205,7 @@ def start_scan(db: Session = Depends(get_db)) -> dict[str, str]:
 
     thread = threading.Thread(
         target=_run_scan,
-        args=(auto_import, labels, scan_inbox, lookback, max_per_folder),
+        args=(tenant_id, auto_import, labels, scan_inbox, lookback, max_per_folder),  # ai: claude-opus-5-5 | 2026-11-16
         daemon=True,
         name="email-scan",
     )
@@ -204,14 +213,20 @@ def start_scan(db: Session = Depends(get_db)) -> dict[str, str]:
     return {"status": "started"}
 
 
+# ai: claude-opus-5-5 | 2026-11-16
 @router.get("/scan/status", response_model=EmailScanStatus)
-def scan_status() -> EmailScanStatus:
+def scan_status(db: Session = Depends(get_db)) -> EmailScanStatus:
+    if _scan_owner_tenant_id != current_tenant_id(db):
+        return EmailScanStatus(running=False)
     return EmailScanStatus(**_scan_status)
 
 
+# ai: claude-opus-5-5 | 2026-11-16
 @router.get("/scan/report", response_model=ScanReport)
-def scan_report() -> ScanReport:
+def scan_report(db: Session = Depends(get_db)) -> ScanReport:
     """Return the full per-email log from the most recent scan."""
+    if _scan_owner_tenant_id != current_tenant_id(db):
+        return ScanReport()
     with _scan_log_lock:
         entries = list(_scan_log)
     return ScanReport(
@@ -354,6 +369,7 @@ def discard_candidate(candidate_id: int, db: Session = Depends(get_db)) -> None:
 # ── Background scan thread ────────────────────────────────────────────────────
 
 def _run_scan(
+    tenant_id: int,  # ai: claude-opus-5-5 | 2026-11-16
     auto_import: bool,
     labels: list[str],
     scan_inbox: bool,
@@ -374,7 +390,7 @@ def _run_scan(
             _scan_status["errors"].append(str(exc))
         return
 
-    db = SessionLocal()
+    db = bind_tenant(SessionLocal(), tenant_id)  # ai: claude-opus-5-5 | 2026-11-16
     try:
         # Resolve each requested label name to its ID + all sublabel IDs.
         with _scan_lock:
@@ -565,6 +581,7 @@ def _scrape_linked_recipes(
                     minio_stored = storage_svc.upload_image(
                         img_bytes,
                         content_type,
+                        tenant_id=current_tenant_id(db),  # ai: claude-opus-5-5 | 2026-11-16
                         metadata={
                             "recipe-title": (extracted.title or "")[:512],
                             "source-type": "email-link",
@@ -735,12 +752,17 @@ def _frontend_origin() -> str:
 
 
 def _get_setting(db: Session, key: str, default: str) -> str:
-    row = db.get(models.AppSetting, key)
-    return row.value if row else default
+    # ai: claude-opus-5-5 | 2026-11-16
+    # A query, not db.get(): the primary key is (tenant_id, key), and the session's
+    # household filter supplies tenant_id.
+    value = db.scalar(select(models.AppSetting.value).where(models.AppSetting.key == key))
+    return value if value is not None else default
 
 
 # ai: claude-opus-5-5 | 2026-11-13
 def _set_setting(db: Session, key: str, value: str) -> None:
     """Atomic upsert (no SELECT-then-INSERT race on the primary key). Caller commits."""
-    stmt = pg_insert(models.AppSetting.__table__).values(key=key, value=value)
-    db.execute(stmt.on_conflict_do_update(index_elements=["key"], set_={"value": value}))
+    # ai: claude-opus-5-5 | 2026-11-16
+    # Core insert: not covered by the automatic household filter, so tenant_id is explicit.
+    stmt = pg_insert(models.AppSetting.__table__).values(tenant_id=current_tenant_id(db), key=key, value=value)
+    db.execute(stmt.on_conflict_do_update(index_elements=["tenant_id", "key"], set_={"value": value}))

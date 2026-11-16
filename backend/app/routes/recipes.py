@@ -3,7 +3,7 @@ from datetime import datetime, UTC
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import current_tenant_id, get_db  # ai: claude-opus-5-5 | 2026-11-16
 from app import models, schemas
 from app.services import image_candidates as img_cand_svc
 from app.services.media_types import SUPPORTED_IMAGE_MEDIA_TYPES  # ai: claude-opus-5-5 | 2026-11-15
@@ -99,6 +99,7 @@ def select_recipe_image(
         stored = storage_svc.upload_image(
             img_bytes,
             content_type,
+            tenant_id=current_tenant_id(db),  # ai: claude-opus-5-5 | 2026-11-16
             metadata={
                 "source-type": "email",
                 "recipe-title": recipe.title[:512],
@@ -125,9 +126,9 @@ def select_recipe_image(
             sender_domain = c.sender_domain or ""
 
     recipe.image_key = stored["image_key"]
-    recipe.image_url = stored["image_url"]
+    recipe.image_url = None  # ai: claude-opus-5-5 | 2026-11-16 (stored image: URL derived from the key)
     recipe.thumbnail_key = stored["thumbnail_key"]
-    recipe.thumbnail_url = stored["thumbnail_url"]
+    recipe.thumbnail_url = None
     recipe.image_pending = False
 
     db.commit()

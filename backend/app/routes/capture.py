@@ -10,7 +10,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal, get_db
+from app.database import current_tenant_id, default_tenant_session, get_db  # ai: claude-opus-5-5 | 2026-11-16
 from app import models, schemas
 from app.services import vision as vision_svc
 from app.services import storage as storage_svc
@@ -85,26 +85,26 @@ def capture_from_html(payload: schemas.CaptureHtmlRequest, db: Session = Depends
         raise HTTPException(status_code=status_code, detail=detail)
 
 
-# ai: claude-opus-5-5 | 2026-11-15
+# ai: claude-opus-5-5 | 2026-11-16
 def submit_listener_capture(body: dict[str, Any]) -> tuple[dict[str, Any], int]:
     """Capture callback for the userscript listener (its own thread, so its own session).
 
-    Uses the page HTML when the userscript sent it, otherwise fetches the URL.
+    The listener only accepts localhost connections and has no login, so captures
+    land in the default household. Uses the page HTML when the userscript sent it,
+    otherwise fetches the URL.
     """
-    db = SessionLocal()
-    try:
+    with default_tenant_session() as db:
         service = RecipeCaptureService(db)
-        html = body.get("html")
-        if html:
-            recipe = service.capture_html(body["url"], html, body["tag_ids"])
-        else:
-            recipe = service.capture_url(body["url"], body["tag_ids"])
+        try:
+            html = body.get("html")
+            if html:
+                recipe = service.capture_html(body["url"], html, body["tag_ids"])
+            else:
+                recipe = service.capture_url(body["url"], body["tag_ids"])
+        except _CAPTURE_ERRORS as exc:
+            status_code, detail = capture_error_response(exc)
+            return {"detail": detail}, status_code
         return schemas.RecipeOut.model_validate(recipe).model_dump(mode="json"), 200
-    except _CAPTURE_ERRORS as exc:
-        status_code, detail = capture_error_response(exc)
-        return {"detail": detail}, status_code
-    finally:
-        db.close()
 
 
 @router.post("/scan", response_model=schemas.ScanResponse)
@@ -179,7 +179,9 @@ async def capture_from_image(
         "app-name": "recipe-app",
     }
     try:
-        stored = storage_svc.upload_image(image_bytes, media_type, metadata=img_metadata)
+        stored = storage_svc.upload_image(
+            image_bytes, media_type, tenant_id=current_tenant_id(db), metadata=img_metadata,
+        )  # ai: claude-opus-5-5 | 2026-11-16
     except Exception as e:
         logger.error("[capture:image] Storage upload failed: %s", e)
         raise HTTPException(status_code=500, detail="Storage upload failed.")  # ai: claude-opus-5-5 | 2026-11-13

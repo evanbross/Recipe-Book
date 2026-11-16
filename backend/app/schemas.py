@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 from typing import Annotated, Optional
-from pydantic import BaseModel, Field, StringConstraints, computed_field
+from pydantic import BaseModel, Field, StringConstraints, computed_field, model_validator
+
+from app.config import settings  # ai: claude-opus-5-5 | 2026-11-16
 
 
 # ── Tag Category ──────────────────────────────────────────────────────────────
@@ -42,6 +44,33 @@ class TagOut(TagBase):
 
 # ── Recipe ────────────────────────────────────────────────────────────────────
 
+# ai: claude-opus-5-5 | 2026-11-16
+def image_path(key: str) -> str:
+    """Browser path for a stored image: served by GET /images/{key} (household-checked)."""
+    return f"{settings.api_public_prefix}/images/{key}"
+
+
+class _ServesStoredImages(BaseModel):
+    """Recipe output with image URLs derived from storage keys.
+
+    A stored image (key present) is always served through the API; image_url /
+    thumbnail_url columns only hold an external URL when nothing was stored.
+    The keys themselves stay internal (excluded from the JSON).
+    """
+    image_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    image_key: Optional[str] = Field(default=None, exclude=True)
+    thumbnail_key: Optional[str] = Field(default=None, exclude=True)
+
+    @model_validator(mode="after")
+    def _derive_image_urls(self) -> "_ServesStoredImages":
+        if self.image_key:
+            self.image_url = image_path(self.image_key)
+        if self.thumbnail_key:
+            self.thumbnail_url = image_path(self.thumbnail_key)
+        return self
+
+
 class RecipeBase(BaseModel):
     title: str
     description: Optional[str] = None
@@ -66,22 +95,18 @@ class RecipeUpdate(BaseModel):
     cook_time: Optional[str] = None
     tag_ids: Optional[list[int]] = None
 
-class RecipeOut(RecipeBase):
+class RecipeOut(_ServesStoredImages, RecipeBase):  # ai: claude-opus-5-5 | 2026-11-16
     id: int
-    image_url: Optional[str] = None
-    thumbnail_url: Optional[str] = None
     image_pending: bool = False
     tags: list[TagOut] = []
     created_at: datetime
     updated_at: datetime
     model_config = {"from_attributes": True}
 
-class RecipeListOut(BaseModel):
+class RecipeListOut(_ServesStoredImages):  # ai: claude-opus-5-5 | 2026-11-16
     id: int
     title: str
     description: Optional[str] = None
-    thumbnail_url: Optional[str] = None
-    image_url: Optional[str] = None
     image_pending: bool = False
     source_url: Optional[str] = None
     source_type: str

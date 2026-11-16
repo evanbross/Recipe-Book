@@ -77,7 +77,6 @@ MINIO_ENDPOINT=http://localhost:9000
 MINIO_ACCESS_KEY=your_minio_access_key_here
 MINIO_SECRET_KEY=your_minio_secret_key_here
 MINIO_BUCKET_NAME=recipe-images
-MINIO_PUBLIC_URL=http://localhost:9000/recipe-images
 
 # App
 SECRET_KEY=change-this-to-a-random-secret-key
@@ -129,7 +128,12 @@ class Settings(BaseSettings):
     minio_access_key: str
     minio_secret_key: str
     minio_bucket_name: str
-    minio_public_url: str
+    # ai: claude-opus-5-5 | 2026-11-16
+    # Images are served through the API (GET /images/{key}, household-checked), never
+    # straight from MinIO; this is the path prefix the browser reaches the API under.
+    api_public_prefix: str = "/api"
+    # Household every request acts for until login exists (app/database/tenancy.py).
+    default_tenant_slug: str = "default"
     secret_key: str
     cors_origins: str = "http://localhost:5174"
 
