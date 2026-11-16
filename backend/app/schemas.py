@@ -96,6 +96,25 @@ class CaptureUrlRequest(BaseModel):
     url: str
     tag_ids: list[int] = []
 
+
+# ai: claude-opus-5-5 | 2026-11-15
+# Upper bound on page HTML a client may send for capture. Recipe blog pages are
+# typically 0.3-2 MB of HTML; 5 MB leaves headroom without letting one request
+# hold an unbounded string in memory. The userscript listener sizes its body
+# limit from this too.
+MAX_CAPTURE_HTML_CHARS = 5 * 1024 * 1024
+
+
+class CaptureHtmlRequest(BaseModel):
+    """Page HTML the user's own browser already loaded, plus the page URL it came from.
+
+    The HTML is untrusted input: it is only parsed for recipe text and image
+    links, never rendered or stored.
+    """
+    url: Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^https?://", max_length=2048)]
+    html: Annotated[str, StringConstraints(min_length=1, max_length=MAX_CAPTURE_HTML_CHARS)]
+    tag_ids: list[int] = []
+
 class ScanRequest(BaseModel):
     url: Optional[str] = None
     html: Optional[str] = None

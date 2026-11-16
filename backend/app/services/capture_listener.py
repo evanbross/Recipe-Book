@@ -39,13 +39,19 @@ from typing import Any
 from urllib.parse import urlparse
 
 from app.config import settings
+from app.schemas import MAX_CAPTURE_HTML_CHARS  # ai: claude-opus-5-5 | 2026-11-15
 
 logger = logging.getLogger(__name__)
 
 SubmitCapture = Callable[[dict[str, Any]], tuple[dict[str, Any], int]]
 
 _ALLOWED_PATHS: frozenset[str] = frozenset({"/", "/capture/url"})
-_MAX_BYTES: int = 4 * 1024  # URL payloads are tiny; 4 KB is generous
+# ai: claude-opus-5-5 | 2026-11-15
+# The userscript sends the page HTML, capped at MAX_CAPTURE_HTML_CHARS characters.
+# JSON escaping and multi-byte UTF-8 make the body larger than the character count,
+# so the byte limit allows 2x plus room for the URL and tag ids; the character cap
+# itself is enforced after parsing.
+_MAX_BYTES: int = MAX_CAPTURE_HTML_CHARS * 2 + 64 * 1024
 
 
 class _RequestParser:
@@ -85,7 +91,16 @@ class _RequestParser:
         raw_ids = payload.get("tag_ids") or []
         tag_ids = [t for t in (raw_ids if isinstance(raw_ids, list) else []) if isinstance(t, int)]
 
-        return {"url": url, "tag_ids": tag_ids}, "", HTTPStatus.OK
+        # ai: claude-opus-5-5 | 2026-11-15
+        html = payload.get("html")
+        if html is not None and not isinstance(html, str):
+            return None, "'html' must be a string.", HTTPStatus.BAD_REQUEST
+        if html and len(html) > MAX_CAPTURE_HTML_CHARS:
+            return None, "Page HTML too large.", HTTPStatus.REQUEST_ENTITY_TOO_LARGE
+        if html and not url.lower().startswith(("http://", "https://")):
+            return None, "'url' must be an http(s) URL.", HTTPStatus.BAD_REQUEST
+
+        return {"url": url, "tag_ids": tag_ids, "html": html or None}, "", HTTPStatus.OK
 
 
 class CaptureListener:

@@ -211,9 +211,19 @@ def fetch_page(url: str, timeout: int = 15) -> tuple[str, str | None, str, dict 
         except httpx.HTTPStatusError:
             logger.warning("[scraper] HTTP %s for %s", response.status_code, url)
             raise
-    final_url = str(response.url)
+    return parse_page_html(response.text, str(response.url))
 
-    soup = BeautifulSoup(response.text, "html.parser")
+
+# ai: claude-opus-5-5 | 2026-11-15
+def parse_page_html(html: str, final_url: str) -> tuple[str, str | None, str, dict | None]:
+    """
+    Parse already-fetched page HTML into (cleaned_text, og_image_url, final_url, jsonld_recipe).
+
+    Split out of fetch_page() so HTML the user's own browser loaded (sent by the
+    userscript or an extension) goes through exactly the same parsing as a
+    server-side fetch. final_url is used to resolve relative image URLs.
+    """
+    soup = BeautifulSoup(html, "html.parser")
 
     # Extract OG image and JSON-LD before decomposing any elements.
     og_tag = soup.find("meta", attrs={"property": "og:image"}) or \
@@ -239,12 +249,6 @@ def fetch_page(url: str, timeout: int = 15) -> tuple[str, str | None, str, dict 
 
     lines = [line for line in text.splitlines() if line.strip()]
     return "\n".join(lines), og_image_url, final_url, jsonld_recipe
-
-
-def fetch_page_text(url: str, timeout: int = 15) -> str:
-    """Fetch a web page and return its cleaned text. Use fetch_page() to also get the OG image."""
-    text, _, _, _ = fetch_page(url, timeout)
-    return text
 
 
 def fetch_page_html(url: str, timeout: int = 15) -> tuple[str, str]:

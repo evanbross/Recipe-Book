@@ -60,7 +60,15 @@ def test_json_capture_is_submitted(http, listener):
     res = http.post(f"{base}/capture/url",
                      json={"url": " https://a.com/r ", "tag_ids": [1, "x", 2]})
     assert res.status_code == HTTPStatus.ACCEPTED
-    assert received == [{"url": "https://a.com/r", "tag_ids": [1, 2]}]
+    assert received == [{"url": "https://a.com/r", "tag_ids": [1, 2], "html": None}]
+
+
+# ai: claude-opus-5-5 | 2026-11-15
+def test_page_html_is_passed_through(http, listener):
+    base, received = listener
+    res = http.post(f"{base}/capture/url", json={"url": "https://a.com/r", "html": "<h1>Soup</h1>"})
+    assert res.status_code == HTTPStatus.ACCEPTED
+    assert received == [{"url": "https://a.com/r", "tag_ids": [], "html": "<h1>Soup</h1>"}]
 
 
 def test_json_with_charset_is_accepted(http, listener):
@@ -89,6 +97,8 @@ def test_non_json_content_type_is_rejected_without_submitting(http, listener, co
     (b"[1, 2]", HTTPStatus.BAD_REQUEST),
     (b'{"tag_ids": [1]}', HTTPStatus.BAD_REQUEST),
     (b'{"url": "' + b"a" * 5000 + b'"}', HTTPStatus.REQUEST_ENTITY_TOO_LARGE),
+    (b'{"url": "https://a.com/r", "html": 42}', HTTPStatus.BAD_REQUEST),
+    (b'{"url": "file:///etc/passwd", "html": "<p>x</p>"}', HTTPStatus.BAD_REQUEST),
 ])
 def test_bad_bodies_are_rejected(http, listener, body, expected):
     base, received = listener
