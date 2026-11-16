@@ -4,18 +4,20 @@ All paths run through Claude vision extraction and store results in PostgreSQL +
 """
 import logging
 from datetime import datetime, UTC
-from urllib.parse import urljoin
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app import models, schemas
 from app.services import vision as vision_svc
 from app.services import storage as storage_svc
 from app.services import scraper as scraper_svc
-from app.services import sources as sources_svc
+from app.services.recipe_capture import (  # ai: claude-opus-5-5 | 2026-11-15
+    PageFetchError, RecipeCaptureService, RecipeExtractionError, RecipeSaveError,
+)
 from app.services.media_types import SUPPORTED_IMAGE_MEDIA_TYPES  # ai: claude-opus-5-5 | 2026-11-15
 from app.services.url_guard import UnsafeURLError
 
@@ -28,131 +30,81 @@ def _trunc(value: str | None, max_len: int) -> str:
     return value[:max_len] if value else ""
 
 
+# ai: claude-opus-5-5 | 2026-11-15
+_BLOCKED_HINT = (
+    "Some sites block automated access; capture it from your browser with the "
+    "userscript, or upload a screenshot instead."
+)
+
+
+def capture_error_response(exc: Exception) -> tuple[int, str]:
+    """Map a capture-service error to (HTTP status, user-facing message).
+
+    Shared by the HTTP routes and the userscript listener so both report the
+    same thing. Messages stay generic: details go to the server log only.
+    """
+    if isinstance(exc, UnsafeURLError):
+        return 400, "URL not allowed: it points to a private or local address."
+    if isinstance(exc, PageFetchError):
+        if exc.status_code is not None:
+            return 422, f"Failed to fetch URL: the site refused the request (HTTP {exc.status_code}). {_BLOCKED_HINT}"
+        return 422, "Failed to fetch URL: could not reach the site."
+    if isinstance(exc, RecipeExtractionError):
+        return 422, "Claude extraction failed."
+    if isinstance(exc, RecipeSaveError):
+        return 500, "Database error saving recipe"
+    raise exc
+
+
+_CAPTURE_ERRORS = (UnsafeURLError, PageFetchError, RecipeExtractionError, RecipeSaveError)
+
+
+# ai: claude-opus-5-5 | 2026-11-15
 @router.post("/url", response_model=schemas.RecipeOut)
 def capture_from_url(payload: schemas.CaptureUrlRequest, db: Session = Depends(get_db)) -> schemas.RecipeOut:
-    """
-    Fetch a web page, extract its text, send to Claude, save resulting recipe.
-    The OG image is downloaded and stored in MinIO when available; falls back to
-    the external URL if the download or upload fails.
-    """
-    logger.info("[capture] Starting URL capture for %s", payload.url)
-
+    """Fetch a web page server-side, extract the recipe, store its image and save it."""
     try:
-        # Phase 1 — fetch page
-        try:
-            page_text, og_image_url, final_url, jsonld_recipe = scraper_svc.fetch_page(payload.url)
-        # ai: claude-opus-5-5 | 2026-11-13
-        except UnsafeURLError as e:
-            logger.warning("[capture] Blocked fetch of %s: %s", payload.url, e)
-            raise HTTPException(status_code=400, detail="URL not allowed: it points to a private or local address.")
-        except httpx.HTTPError as e:
-            logger.warning("[capture] Fetch failed for %s: %s", payload.url, e)
-            raise HTTPException(status_code=422, detail="Failed to fetch URL.")
+        return RecipeCaptureService(db).capture_url(payload.url, payload.tag_ids)
+    except _CAPTURE_ERRORS as exc:
+        status_code, detail = capture_error_response(exc)
+        raise HTTPException(status_code=status_code, detail=detail)
 
-        # Phase 2 — extract recipe
-        try:
-            if jsonld_recipe:
-                extracted = vision_svc.extract_from_jsonld(jsonld_recipe)
-                if not extracted.ingredients or not extracted.instructions:
-                    # JSON-LD was present but incomplete; fall back to Claude for the gaps.
-                    extracted = vision_svc.extract_from_text(page_text)
-            else:
-                extracted = vision_svc.extract_from_text(page_text)
-        except Exception as e:
-            logger.warning("[capture] Extraction failed for %s: %s", payload.url, e)
-            raise HTTPException(status_code=422, detail="Claude extraction failed.")  # ai: claude-opus-5-5 | 2026-11-13
 
-        # Resolve source tag from URL / JSON-LD
-        source_name = sources_svc.resolve_source_name(final_url, jsonld_recipe)
-        source_tag = sources_svc.get_or_create_source_tag(db, source_name) if source_name else None
+# ai: claude-opus-5-5 | 2026-11-15
+@router.post("/html", response_model=schemas.RecipeOut)
+def capture_from_html(payload: schemas.CaptureHtmlRequest, db: Session = Depends(get_db)) -> schemas.RecipeOut:
+    """Capture from page HTML the caller's browser already loaded.
 
-        tags = db.query(models.Tag).filter(models.Tag.id.in_(payload.tag_ids)).all()
-        if source_tag:
-            tags.append(source_tag)
+    For sites that refuse server-side fetches: the page itself is never fetched,
+    only its image (through the same SSRF-guarded client as every other fetch).
+    """
+    try:
+        return RecipeCaptureService(db).capture_html(payload.url, payload.html, payload.tag_ids)
+    except _CAPTURE_ERRORS as exc:
+        status_code, detail = capture_error_response(exc)
+        raise HTTPException(status_code=status_code, detail=detail)
 
-        # Determine best available image URL: OG image first, then JSON-LD image.
-        image_url = og_image_url
-        if not image_url and jsonld_recipe:
-            jsonld_image = scraper_svc.extract_jsonld_image_url(jsonld_recipe)
-            if jsonld_image:
-                image_url = urljoin(final_url, jsonld_image)
 
-        # Phase 3 — download / store image (non-fatal)
-        minio_stored: dict[str, str] | None = None
-        if image_url:
-            try:
-                img_bytes, content_type = scraper_svc.fetch_page_image(image_url)
-                if content_type not in SUPPORTED_IMAGE_MEDIA_TYPES:
-                    logger.warning(
-                        "[capture] Image at %s has unsupported type '%s' — skipping MinIO upload",
-                        image_url, content_type,
-                    )
-                else:
-                    web_metadata = {
-                        "recipe-title": _trunc(extracted.title, 512),
-                        "source-type": "web",
-                        "source-url": _trunc(payload.url, 1024),
-                        "source-image-url": _trunc(image_url, 1024),
-                        "captured-at": datetime.now(UTC).isoformat(),
-                        "app-name": "recipe-app",
-                    }
-                    minio_stored = storage_svc.upload_image(
-                        img_bytes, content_type, metadata=web_metadata
-                    )
-            except Exception as exc:
-                logger.warning(
-                    "[capture] Image download/store failed for %s (%s: %s) — falling back to external URL",
-                    image_url, type(exc).__name__, exc,
-                )
+# ai: claude-opus-5-5 | 2026-11-15
+def submit_listener_capture(body: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    """Capture callback for the userscript listener (its own thread, so its own session).
 
-        # Phase 4 — build model (truncate fields to avoid DB errors)
-        if minio_stored:
-            recipe = models.Recipe(
-                **extracted.model_dump(),
-                source_url=payload.url,
-                source_type="web",
-                **minio_stored,
-            )
+    Uses the page HTML when the userscript sent it, otherwise fetches the URL.
+    """
+    db = SessionLocal()
+    try:
+        service = RecipeCaptureService(db)
+        html = body.get("html")
+        if html:
+            recipe = service.capture_html(body["url"], html, body["tag_ids"])
         else:
-            recipe = models.Recipe(
-                **extracted.model_dump(),
-                source_url=payload.url,
-                source_type="web",
-                image_url=image_url,
-            )
-
-        recipe.tags = tags
-
-        # Phase 5 — save to DB
-        try:
-            db.add(recipe)
-            db.commit()
-            db.refresh(recipe)
-        except Exception as exc:
-            db.rollback()
-            logger.error("[capture] Database save failed for %s: %s", payload.url, exc)
-            raise HTTPException(status_code=500, detail="Database error saving recipe")
-
-        # Phase 6 — tag MinIO objects (non-fatal)
-        if minio_stored:
-            try:
-                storage_svc.tag_objects_with_recipe_id(
-                    minio_stored["image_key"], minio_stored.get("thumbnail_key"), recipe.id
-                )
-            except Exception as exc:
-                logger.warning(
-                    "[capture] Failed to tag MinIO objects for recipe %d: %s",
-                    recipe.id, exc,
-                )
-
-        logger.info("[capture] Successfully saved recipe %d from %s", recipe.id, payload.url)
-        return recipe
-
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception("[capture] Unexpected error for %s: %s", payload.url, exc)
-        raise HTTPException(status_code=500, detail="Unexpected server error")
+            recipe = service.capture_url(body["url"], body["tag_ids"])
+        return schemas.RecipeOut.model_validate(recipe).model_dump(mode="json"), 200
+    except _CAPTURE_ERRORS as exc:
+        status_code, detail = capture_error_response(exc)
+        return {"detail": detail}, status_code
+    finally:
+        db.close()
 
 
 @router.post("/scan", response_model=schemas.ScanResponse)

@@ -1,17 +1,14 @@
 import logging
 import sys
 from contextlib import asynccontextmanager
-from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from app.config import settings
-from app.database import Base, engine, SessionLocal
-from app import models, schemas
+from app.database import engine, SessionLocal
+from app import models
 from app.routes import recipes, tags, capture, search, email_scan, watchlist
-from app.services import scraper as scraper_svc, vision as vision_svc
 from app.services import storage as storage_svc
-from app.services import sources as sources_svc
 from app.services.capture_listener import start_capture_listener
 from app.services.storage import check_connectivity as check_minio
 
@@ -21,45 +18,6 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 logger = logging.getLogger(__name__)
-
-
-def _listener_submit_capture(body: dict[str, Any]) -> tuple[dict[str, Any], int]:
-    """Callback wired into the capture listener; mirrors the /capture/url route logic."""
-    url = str(body["url"])
-    tag_ids: list[int] = list(body.get("tag_ids") or [])
-
-    try:
-        page_text = scraper_svc.fetch_page_text(url)
-    except Exception as exc:
-        logger.warning("Capture listener: failed to fetch %s: %s", url, exc)
-        return {"detail": f"Failed to fetch URL: {exc}"}, 422
-
-    try:
-        extracted = vision_svc.extract_from_text(page_text)
-    except Exception as exc:
-        logger.warning("Capture listener: Claude extraction failed: %s", exc)
-        return {"detail": f"Claude extraction failed: {exc}"}, 422
-
-    db = SessionLocal()
-    try:
-        matched_tags = db.query(models.Tag).filter(models.Tag.id.in_(tag_ids)).all()
-        data = extracted.model_dump()
-        recipe = models.Recipe(
-            **data,
-            source_url=url,
-            source_type="web",
-        )
-        recipe.tags = matched_tags
-        db.add(recipe)
-        db.commit()
-        db.refresh(recipe)
-        return schemas.RecipeOut.model_validate(recipe).model_dump(mode="json"), 200
-    except Exception as exc:
-        db.rollback()
-        logger.error("Capture listener: database error: %s", exc)
-        return {"detail": "Database error"}, 500
-    finally:
-        db.close()
 
 
 def _check_database() -> None:
@@ -81,7 +39,7 @@ async def lifespan(app: FastAPI):
         logger.critical("Startup check failed: %s", exc)
         sys.exit(1)
     logger.info("All dependency checks passed.")
-    start_capture_listener(_listener_submit_capture)
+    start_capture_listener(capture.submit_listener_capture)  # ai: claude-opus-5-5 | 2026-11-15
     yield
 
 

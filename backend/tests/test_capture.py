@@ -2,7 +2,12 @@ from unittest.mock import patch
 
 import httpx
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
+
+from app import models
+from app.routes.capture import submit_listener_capture
 from app.schemas import CaptureResult
+from app.services.claude_client import ClaudeRefusalError
 
 
 @pytest.fixture()
@@ -18,13 +23,13 @@ def capture_result():
     )
 
 
-# ── URL capture — existing tests (fetch_page_text → fetch_page) ───────────────
+# ── URL capture ───────────────────────────────────────────────────────────────
 
 def test_capture_url_success(client, capture_result):
     with (
-        patch("app.routes.capture.scraper_svc.fetch_page",
+        patch("app.services.recipe_capture.scraper_svc.fetch_page",
               return_value=("some page text", None, "https://example.com/recipe", None)),
-        patch("app.routes.capture.vision_svc.extract_from_text", return_value=capture_result),
+        patch("app.services.recipe_capture.vision_svc.extract_from_text", return_value=capture_result),
     ):
         response = client.post("/capture/url", json={"url": "https://example.com/recipe"})
 
@@ -36,7 +41,7 @@ def test_capture_url_success(client, capture_result):
 
 
 def test_capture_url_scraper_failure(client):
-    with patch("app.routes.capture.scraper_svc.fetch_page",
+    with patch("app.services.recipe_capture.scraper_svc.fetch_page",
                side_effect=httpx.ConnectTimeout("timeout")):
         response = client.post("/capture/url", json={"url": "https://example.com/recipe"})
 
@@ -44,11 +49,24 @@ def test_capture_url_scraper_failure(client):
     assert "Failed to fetch URL" in response.json()["detail"]
 
 
-def test_capture_url_vision_failure(client):
+# ai: claude-opus-5-5 | 2026-11-15
+def test_capture_url_blocked_site_reports_status_and_alternatives(client):
+    request = httpx.Request("GET", "https://example.com/recipe")
+    refused = httpx.HTTPStatusError("403", request=request, response=httpx.Response(403, request=request))
+    with patch("app.services.recipe_capture.scraper_svc.fetch_page", side_effect=refused):
+        response = client.post("/capture/url", json={"url": "https://example.com/recipe"})
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert "HTTP 403" in detail
+    assert "userscript" in detail
+
+
+@pytest.mark.parametrize("error", [ValueError("unparseable reply"), ClaudeRefusalError("declined")])
+def test_capture_url_vision_failure(client, error):
     with (
-        patch("app.routes.capture.scraper_svc.fetch_page", return_value=("text", None, "https://example.com/recipe", None)),
-        patch("app.routes.capture.vision_svc.extract_from_text",
-              side_effect=Exception("Claude error")),
+        patch("app.services.recipe_capture.scraper_svc.fetch_page", return_value=("text", None, "https://example.com/recipe", None)),
+        patch("app.services.recipe_capture.vision_svc.extract_from_text", side_effect=error),
     ):
         response = client.post("/capture/url", json={"url": "https://example.com/recipe"})
 
@@ -60,9 +78,9 @@ def test_capture_url_with_tags(client, make_tag, capture_result):
     tag = make_tag(name="Asian", slug="asian")
 
     with (
-        patch("app.routes.capture.scraper_svc.fetch_page",
+        patch("app.services.recipe_capture.scraper_svc.fetch_page",
               return_value=("some page text", None, "https://example.com/recipe", None)),
-        patch("app.routes.capture.vision_svc.extract_from_text", return_value=capture_result),
+        patch("app.services.recipe_capture.vision_svc.extract_from_text", return_value=capture_result),
     ):
         response = client.post(
             "/capture/url",
@@ -92,13 +110,13 @@ def test_capture_url_og_image_stored_in_minio(client, capture_result):
         "thumbnail_url": "http://minio/recipe-images/thumbnails/abc.jpg",
     }
     with (
-        patch("app.routes.capture.scraper_svc.fetch_page",
+        patch("app.services.recipe_capture.scraper_svc.fetch_page",
               return_value=("page text", "https://example.com/image.jpg", "https://example.com/recipe", None)),
-        patch("app.routes.capture.vision_svc.extract_from_text", return_value=capture_result),
-        patch("app.routes.capture.scraper_svc.fetch_page_image",
+        patch("app.services.recipe_capture.vision_svc.extract_from_text", return_value=capture_result),
+        patch("app.services.recipe_capture.scraper_svc.fetch_page_image",
               return_value=(b"\xff\xd8\xff\xe0", "image/jpeg")),
-        patch("app.routes.capture.storage_svc.upload_image", return_value=uploaded),
-        patch("app.routes.capture.storage_svc.tag_objects_with_recipe_id"),
+        patch("app.services.recipe_capture.storage_svc.upload_image", return_value=uploaded),
+        patch("app.services.recipe_capture.storage_svc.tag_objects_with_recipe_id"),
     ):
         response = client.post("/capture/url", json={"url": "https://example.com/recipe"})
 
@@ -111,10 +129,10 @@ def test_capture_url_og_image_stored_in_minio(client, capture_result):
 def test_capture_url_og_image_download_fails_uses_external_url(client, capture_result):
     """If OG image download fails, recipe falls back to external URL."""
     with (
-        patch("app.routes.capture.scraper_svc.fetch_page",
+        patch("app.services.recipe_capture.scraper_svc.fetch_page",
               return_value=("page text", "https://example.com/image.jpg", "https://example.com/recipe", None)),
-        patch("app.routes.capture.vision_svc.extract_from_text", return_value=capture_result),
-        patch("app.routes.capture.scraper_svc.fetch_page_image",
+        patch("app.services.recipe_capture.vision_svc.extract_from_text", return_value=capture_result),
+        patch("app.services.recipe_capture.scraper_svc.fetch_page_image",
               side_effect=httpx.RequestError("timeout")),
     ):
         response = client.post("/capture/url", json={"url": "https://example.com/recipe"})
@@ -128,10 +146,10 @@ def test_capture_url_og_image_download_fails_uses_external_url(client, capture_r
 def test_capture_url_og_image_unsupported_type_falls_back(client, capture_result):
     """Unsupported OG image content-type skips MinIO; recipe gets external URL."""
     with (
-        patch("app.routes.capture.scraper_svc.fetch_page",
+        patch("app.services.recipe_capture.scraper_svc.fetch_page",
               return_value=("page text", "https://example.com/image.svg", "https://example.com/recipe", None)),
-        patch("app.routes.capture.vision_svc.extract_from_text", return_value=capture_result),
-        patch("app.routes.capture.scraper_svc.fetch_page_image",
+        patch("app.services.recipe_capture.vision_svc.extract_from_text", return_value=capture_result),
+        patch("app.services.recipe_capture.scraper_svc.fetch_page_image",
               return_value=(b"<svg/>", "image/svg+xml")),
     ):
         response = client.post("/capture/url", json={"url": "https://example.com/recipe"})
@@ -139,6 +157,83 @@ def test_capture_url_og_image_unsupported_type_falls_back(client, capture_result
     assert response.status_code == 200
     assert response.json()["image_url"] == "https://example.com/image.svg"
     assert response.json()["thumbnail_url"] is None
+
+
+# ai: claude-opus-5-5 | 2026-11-15
+# ── HTML capture (page HTML supplied by the user's browser) ──────────────────
+
+_JSONLD_PAGE = """<html><head>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Recipe", "name": "Browser Soup",
+ "recipeIngredient": ["1 onion", "2 cups stock"],
+ "recipeInstructions": [{"@type": "HowToStep", "text": "Simmer."}]}
+</script></head><body><h1>Browser Soup</h1></body></html>"""
+
+
+def test_capture_html_uses_supplied_html_without_fetching_the_page(client):
+    # Real parse + JSON-LD extraction + Source tag + DB write; only the page fetch
+    # is booby-trapped, to prove the server never requests the page itself.
+    with patch("app.services.recipe_capture.scraper_svc.fetch_page") as fetch:
+        response = client.post("/capture/html", json={
+            "url": "https://www.example.com/soup", "html": _JSONLD_PAGE,
+        })
+
+    assert response.status_code == 200, response.text
+    fetch.assert_not_called()
+    payload = response.json()
+    assert payload["title"] == "Browser Soup"
+    assert payload["ingredients"] == "1 onion\n2 cups stock"
+    assert payload["source_url"] == "https://www.example.com/soup"
+    assert [t["name"] for t in payload["tags"]] == ["Example"]
+
+
+@pytest.mark.parametrize("body", [
+    {"url": "javascript:alert(1)", "html": "<p>x</p>"},
+    {"url": "https://example.com/r", "html": ""},
+])
+def test_capture_html_rejects_invalid_payloads(client, body):
+    assert client.post("/capture/html", json=body).status_code == 422
+
+
+def test_capture_save_failure_discards_the_uploaded_image(client, capture_result):
+    stored = {"image_key": "originals/x.jpg", "image_url": "u", "thumbnail_key": "thumbnails/x.jpg", "thumbnail_url": "t"}
+    with (
+        patch("app.services.recipe_capture.scraper_svc.fetch_page",
+              return_value=("text", "https://example.com/i.jpg", "https://example.com/r", None)),
+        patch("app.services.recipe_capture.vision_svc.extract_from_text", return_value=capture_result),
+        patch("app.services.recipe_capture.scraper_svc.fetch_page_image", return_value=(b"img", "image/jpeg")),
+        patch("app.services.recipe_capture.storage_svc.upload_image", return_value=stored),
+        patch("app.services.recipe_capture.sources_svc.get_or_create_source_tag",
+              side_effect=SQLAlchemyError("db down")),
+        patch("app.services.recipe_capture.storage_svc.delete_image") as delete,
+    ):
+        response = client.post("/capture/url", json={"url": "https://example.com/r"})
+
+    assert response.status_code == 500
+    delete.assert_called_once_with("originals/x.jpg", "thumbnails/x.jpg")
+
+
+def test_listener_submission_with_html_captures_from_it(db_session):
+    with patch("app.routes.capture.SessionLocal", return_value=db_session), \
+            patch("app.services.recipe_capture.scraper_svc.fetch_page") as fetch:
+        result, status_code = submit_listener_capture(
+            {"url": "https://www.example.com/soup", "tag_ids": [], "html": _JSONLD_PAGE})
+
+    assert status_code == 200
+    fetch.assert_not_called()
+    assert result["title"] == "Browser Soup"
+    assert db_session.query(models.Recipe).count() == 1
+
+
+def test_listener_submission_reports_blocked_site(db_session):
+    request = httpx.Request("GET", "https://example.com/r")
+    refused = httpx.HTTPStatusError("402", request=request, response=httpx.Response(402, request=request))
+    with patch("app.routes.capture.SessionLocal", return_value=db_session), \
+            patch("app.services.recipe_capture.scraper_svc.fetch_page", side_effect=refused):
+        result, status_code = submit_listener_capture({"url": "https://example.com/r", "tag_ids": [], "html": None})
+
+    assert status_code == 422
+    assert "HTTP 402" in result["detail"]
 
 
 # ── Image capture — existing tests ────────────────────────────────────────────

@@ -28,7 +28,7 @@
 // ==UserScript==
 // @name         Recipe Capture
 // @namespace    https://zombietech.biz/recipe-app
-// @version      2.0.1
+// @version      2.1.0
 // @description  Capture the current page as a recipe via the Tampermonkey menu.
 // @author       ZombieTech LLC
 // @match        https://www.177milkstreet.com/recipes/*
@@ -53,7 +53,14 @@
             method: 'POST',
             url: CAPTURE_URL,
             headers: { 'Content-Type': 'application/json' },
-            data: JSON.stringify({ url: window.location.href, tag_ids: [] }),
+            // ai: claude-opus-5-5 | 2026-11-15
+            // Send the page as this browser loaded it, so sites that refuse
+            // server-side fetches (HTTP 402/403) can still be captured.
+            data: JSON.stringify({
+                url: window.location.href,
+                html: document.documentElement.outerHTML,
+                tag_ids: [],
+            }),
             timeout: 60000,
             onload(response) {
                 let body;

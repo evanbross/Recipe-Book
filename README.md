@@ -85,7 +85,7 @@ key with comments. If `.env` is missing, the backend writes a template and exits
 | Claude | `ANTHROPIC_API_KEY` | From https://console.anthropic.com |
 | Image storage | `MINIO_*` | Endpoint, keys, bucket, and public URL of the MinIO bucket |
 | App | `SECRET_KEY`, `CORS_ORIGINS` | |
-| Capture listener | `CAPTURE_LISTENER_*` | Local port the Tampermonkey userscript posts captures to |
+| Capture listener | `CAPTURE_LISTENER_*` | Local port the Tampermonkey userscript posts captures (URL + page HTML) to |
 | Caddy | `CADDY_APP_NAME` | App hostname (`<name>.localhost`) |
 | Email scanning | `GOOGLE_OAUTH_REDIRECT_URI`, `EMAIL_SCAN_*` | Gmail OAuth; credentials go in `backend/credentials/` |
 
@@ -215,6 +215,7 @@ Paths below are the backend's own routes. Through Caddy, prefix them with
 | PATCH | /recipes/{id} | Update recipe |
 | DELETE | /recipes/{id} | Delete recipe (and its stored images) |
 | POST | /capture/url | Capture from web URL |
+| POST | /capture/html | Capture from page HTML the browser already loaded (for sites that block server fetches) |
 | POST | /capture/image | Extract from image/scan (multipart upload) |
 | POST | /capture/scan | List links on a page for bulk capture |
 | GET | /tags | List tags (optional `category_id`) |
