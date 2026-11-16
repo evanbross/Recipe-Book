@@ -27,11 +27,20 @@ const BADGES = {
 // Tabs with a capture in flight; guards against a double click starting two.
 const inFlight = new Set();
 
+// ai: claude-opus-5-5 | 2026-11-16
+function isCaptureMessage(message) {
+    return message?.type === 'capture'
+        && Number.isInteger(message.tabId)
+        && typeof message.tabUrl === 'string'
+        && Array.isArray(message.tagIds)
+        && message.tagIds.every(Number.isInteger);
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type !== 'capture' || !Number.isInteger(message.tabId) || typeof message.tabUrl !== 'string') {
+    if (!isCaptureMessage(message)) {
         return false;
     }
-    captureTab(message.tabId, message.tabUrl);
+    captureTab(message.tabId, message.tabUrl, message.tagIds);  // ai: claude-opus-5-5 | 2026-11-16
     sendResponse({ started: true });
     return false;
 });
@@ -40,21 +49,21 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     chrome.storage.session.remove(captureKey(tabId));
 });
 
-async function captureTab(tabId, tabUrl) {
+async function captureTab(tabId, tabUrl, tagIds) {
     if (inFlight.has(tabId)) {
         return;
     }
     inFlight.add(tabId);
     try {
         await setState(tabId, { tabUrl, status: 'working' });
-        const outcome = await runCapture(tabId);
+        const outcome = await runCapture(tabId, tagIds);  // ai: claude-opus-5-5 | 2026-11-16
         await setState(tabId, { tabUrl, ...outcome });
     } finally {
         inFlight.delete(tabId);
     }
 }
 
-async function runCapture(tabId) {
+async function runCapture(tabId, tagIds) {
     let page;
     try {
         const [injection] = await chrome.scripting.executeScript({
@@ -76,7 +85,7 @@ async function runCapture(tabId) {
         res = await fetch(`${appUrl}/api/capture/html`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: page.url, html: page.html, tag_ids: [] }),
+            body: JSON.stringify({ url: page.url, html: page.html, tag_ids: tagIds }),  // ai: claude-opus-5-5 | 2026-11-16
             signal: AbortSignal.timeout(CAPTURE_TIMEOUT_MS),
         });
     } catch (err) {
@@ -91,10 +100,16 @@ async function runCapture(tabId) {
     if (!res.ok) {
         return failure(describeError(res.status, body));
     }
+    // ai: claude-opus-5-5 | 2026-11-16
+    // When the app isn't running, Caddy still answers 200 with an empty body, so
+    // res.ok alone doesn't mean a recipe was saved.
+    if (!Number.isInteger(body?.id)) {
+        return failure(`Recipe App isn't answering at ${appUrl}. Is it running?`);
+    }
     return {
         status: 'saved',
-        title: body?.title || '(untitled)',
-        recipeUrl: `${appUrl}/recipes/${body?.id}`,
+        title: body.title || '(untitled)',
+        recipeUrl: `${appUrl}/recipes/${body.id}`,
     };
 }
 

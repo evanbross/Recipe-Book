@@ -56,6 +56,13 @@ form.addEventListener('submit', async (event) => {
             show(`Saved, but ${origin}/api/health answered HTTP ${res.status}. Is that the Recipe App?`, 'error');
             return;
         }
+        // ai: claude-opus-5-5 | 2026-11-16
+        // Caddy answers 200 with an empty body when the app isn't running behind it.
+        const body = await res.json().catch(() => null);
+        if (body?.status !== 'ok') {
+            show(`Saved, but Recipe App isn't answering at ${origin}. Is it running?`, 'error');
+            return;
+        }
         show('Saved. Recipe App is reachable.', 'ok');
     } catch {
         show(`Saved, but Recipe App isn't answering at ${origin}. Is it running?`, 'error');

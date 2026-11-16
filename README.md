@@ -82,7 +82,8 @@ Install it in Chrome or Edge (version 116 or later):
 
 1. Open `chrome://extensions` (or `edge://extensions`) and turn on **Developer mode**.
 2. Click **Load unpacked** and choose the `browser-extension/` folder.
-3. Pin the extension, open a recipe page, click the icon and press **Capture recipe**.
+3. Pin the extension, open a recipe page, click the icon, pick any tags and press
+   **Capture recipe**. (The site's source tag is added automatically.)
 
 The capture keeps running if you close the popup. The icon shows … while it works,
 ✓ when the recipe is saved, and ! on an error (open the popup to read it). It posts to

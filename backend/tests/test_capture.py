@@ -203,6 +203,19 @@ def test_capture_html_uses_supplied_html_without_fetching_the_page(client):
     assert [t["name"] for t in payload["tags"]] == ["Example"]
 
 
+# ai: claude-opus-5-5 | 2026-11-16
+def test_capture_html_attaches_requested_tags(client, make_tag):
+    # The browser extension's tag picker sends tag_ids with the page HTML.
+    soup_tag = make_tag(name="Soup", slug="soup")
+
+    response = client.post("/capture/html", json={
+        "url": "https://www.example.com/soup", "html": _JSONLD_PAGE, "tag_ids": [soup_tag.id],
+    })
+
+    assert response.status_code == 200, response.text
+    assert sorted(t["name"] for t in response.json()["tags"]) == ["Example", "Soup"]
+
+
 @pytest.mark.parametrize("body", [
     {"url": "javascript:alert(1)", "html": "<p>x</p>"},
     {"url": "https://example.com/r", "html": ""},
