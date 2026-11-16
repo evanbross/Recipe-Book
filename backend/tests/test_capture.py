@@ -60,7 +60,27 @@ def test_capture_url_blocked_site_reports_status_and_alternatives(client):
     assert response.status_code == 422
     detail = response.json()["detail"]
     assert "HTTP 403" in detail
-    assert "userscript" in detail
+    assert "example.com blocks automated downloads" in detail  # ai: claude-opus-5-5 | 2026-11-16
+    assert "browser extension" in detail
+    assert "screenshot" in detail
+
+
+# ai: claude-opus-5-5 | 2026-11-16
+@pytest.mark.parametrize(("status", "expected"), [
+    (404, "page doesn't exist (HTTP 404)"),
+    (500, "returned an error (HTTP 500)"),
+])
+def test_capture_url_non_blocking_http_errors_do_not_suggest_extension(client, status, expected):
+    request = httpx.Request("GET", "https://www.example.com/recipe")
+    failed = httpx.HTTPStatusError(str(status), request=request, response=httpx.Response(status, request=request))
+    with patch("app.services.recipe_capture.scraper_svc.fetch_page", side_effect=failed):
+        response = client.post("/capture/url", json={"url": "https://www.example.com/recipe"})
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert expected in detail
+    assert "example.com" in detail and "www." not in detail
+    assert "extension" not in detail
 
 
 @pytest.mark.parametrize("error", [ValueError("unparseable reply"), ClaudeRefusalError("declined")])
@@ -232,6 +252,7 @@ def test_listener_submission_reports_blocked_site(db_session):
 
     assert status_code == 422
     assert "HTTP 402" in result["detail"]
+    assert "blocks automated downloads" in result["detail"]  # ai: claude-opus-5-5 | 2026-11-16
 
 
 # ── Image capture — existing tests ────────────────────────────────────────────

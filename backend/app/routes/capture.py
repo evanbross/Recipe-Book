@@ -5,6 +5,7 @@ All paths run through Claude vision extraction and store results in PostgreSQL +
 import logging
 from datetime import datetime, UTC
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
@@ -30,11 +31,35 @@ def _trunc(value: str | None, max_len: int) -> str:
     return value[:max_len] if value else ""
 
 
-# ai: claude-opus-5-5 | 2026-11-15
-_BLOCKED_HINT = (
-    "Some sites block automated access; capture it from your browser with the "
-    "userscript, or upload a screenshot instead."
-)
+# ai: claude-opus-5-5 | 2026-11-16
+# Statuses bot-protection layers (Cloudflare, Akamai, Dotdash Meredith's 402)
+# answer automated fetches with. Only these get the "use your browser" advice;
+# a 404 or 500 means something else and must not send the user off to the extension.
+_BLOCKED_STATUSES: frozenset[int] = frozenset({401, 402, 403, 429})
+_NOT_FOUND_STATUSES: frozenset[int] = frozenset({404, 410})
+
+
+# ai: claude-opus-5-5 | 2026-11-16
+def _site_name(url: str) -> str:
+    """'https://www.seriouseats.com/x' -> 'seriouseats.com', for user-facing messages."""
+    host = urlparse(url).hostname or "The site"
+    return host.removeprefix("www.")
+
+
+# ai: claude-opus-5-5 | 2026-11-16
+def _fetch_error_message(exc: PageFetchError) -> str:
+    site = _site_name(exc.url)
+    if exc.status_code is None:
+        return f"Failed to fetch URL: could not reach {site}."
+    if exc.status_code in _BLOCKED_STATUSES:
+        return (
+            f"{site} blocks automated downloads (HTTP {exc.status_code}), so the app can't fetch "
+            "this page itself. Open the recipe in your browser and capture it with the Recipe App "
+            "browser extension, or upload a screenshot of the recipe instead."
+        )
+    if exc.status_code in _NOT_FOUND_STATUSES:
+        return f"Failed to fetch URL: {site} says the page doesn't exist (HTTP {exc.status_code}). Check the link."
+    return f"Failed to fetch URL: {site} returned an error (HTTP {exc.status_code}). Try again later."
 
 
 def capture_error_response(exc: Exception) -> tuple[int, str]:
@@ -46,9 +71,7 @@ def capture_error_response(exc: Exception) -> tuple[int, str]:
     if isinstance(exc, UnsafeURLError):
         return 400, "URL not allowed: it points to a private or local address."
     if isinstance(exc, PageFetchError):
-        if exc.status_code is not None:
-            return 422, f"Failed to fetch URL: the site refused the request (HTTP {exc.status_code}). {_BLOCKED_HINT}"
-        return 422, "Failed to fetch URL: could not reach the site."
+        return 422, _fetch_error_message(exc)  # ai: claude-opus-5-5 | 2026-11-16
     if isinstance(exc, RecipeExtractionError):
         return 422, "Claude extraction failed."
     if isinstance(exc, RecipeSaveError):
