@@ -54,7 +54,7 @@ def _fetch_error_message(exc: PageFetchError) -> str:
         return (
             f"{site} blocks automated downloads (HTTP {exc.status_code}), so the app can't fetch "
             "this page itself. Open the recipe in your browser and capture it with the Recipe App "
-            "browser extension, or upload a screenshot of the recipe instead."
+            "Capture browser extension, or upload a screenshot of the recipe instead."
         )
     if exc.status_code in _NOT_FOUND_STATUSES:
         return f"Failed to fetch URL: {site} says the page doesn't exist (HTTP {exc.status_code}). Check the link."

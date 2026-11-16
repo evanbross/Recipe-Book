@@ -71,6 +71,25 @@ The frontend calls the API at the relative path `/api`, and Vite has no proxy fo
 so **the UI only works through Caddy**. Without Caddy, only the backend is usable
 (directly on its port).
 
+### Browser extension (capture from your browser)
+
+Some sites (Serious Eats, Allrecipes and other Dotdash Meredith sites) block the app's
+own page fetch with HTTP 402/403. The **Recipe App Capture** extension in
+`browser-extension/` sends the page as your browser already loaded it to
+`POST /capture/html` instead, so those sites work too.
+
+Install it in Chrome or Edge (version 116 or later):
+
+1. Open `chrome://extensions` (or `edge://extensions`) and turn on **Developer mode**.
+2. Click **Load unpacked** and choose the `browser-extension/` folder.
+3. Pin the extension, open a recipe page, click the icon and press **Capture recipe**.
+
+The capture keeps running if you close the popup. The icon shows … while it works,
+✓ when the recipe is saved, and ! on an error (open the popup to read it). It posts to
+`http://recipe-app.localhost` by default; if `CADDY_APP_NAME` is different, set the
+address under **Settings** in the popup, which also tests the connection. After you
+change any file in `browser-extension/`, click the reload icon on the extension's card.
+
 ---
 
 ## Configuration
