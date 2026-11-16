@@ -70,10 +70,6 @@ def check_connectivity() -> None:
         raise RuntimeError(f"MinIO unreachable ({settings.minio_endpoint}): {exc}") from exc
 
 
-def _object_url(key: str) -> str:
-    return f"{settings.minio_public_url}/{key}"
-
-
 def _sanitize_metadata(meta: dict[str, str]) -> dict[str, str]:
     """
     Strip non-ASCII characters from S3 metadata keys and values.
@@ -89,15 +85,20 @@ def _sanitize_metadata(meta: dict[str, str]) -> dict[str, str]:
     return cleaned
 
 
+# ai: claude-opus-5-5 | 2026-11-16
 def upload_image(
     image_bytes: bytes,
     media_type: str = "image/jpeg",
-    folder: str = "originals",
+    *,
+    tenant_id: int,
     metadata: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """
     Upload original image to MinIO and generate a thumbnail.
-    Returns dict with keys: image_key, image_url, thumbnail_key, thumbnail_url.
+    Returns dict with keys: image_key, thumbnail_key. There are no URLs: images
+    are served through the API (GET /images/{key}), which checks the household.
+    Keys live under tenants/<tenant_id>/ so a household's images can be listed,
+    backed up or deleted as a unit.
     Optional metadata is stored as S3 object metadata on both objects.
     object-group-id is always added automatically so original and thumbnail can
     be linked without parsing key paths.
@@ -109,10 +110,12 @@ def upload_image(
     if metadata:
         merged_metadata.update(metadata)
     merged_metadata["object-group-id"] = uid
+    merged_metadata["tenant-id"] = str(tenant_id)
     merged_metadata = _sanitize_metadata(merged_metadata)
 
     # Upload original
-    image_key = f"{folder}/{uid}.{ext}"
+    prefix = f"tenants/{tenant_id}"
+    image_key = f"{prefix}/originals/{uid}.{ext}"
     _s3.put_object(
         Bucket=settings.minio_bucket_name,
         Key=image_key,
@@ -123,7 +126,7 @@ def upload_image(
 
     # Generate and upload thumbnail
     thumb_bytes = _make_thumbnail(image_bytes)
-    thumbnail_key = f"thumbnails/{uid}.jpg"
+    thumbnail_key = f"{prefix}/thumbnails/{uid}.jpg"
     _s3.put_object(
         Bucket=settings.minio_bucket_name,
         Key=thumbnail_key,
@@ -132,12 +135,15 @@ def upload_image(
         Metadata=merged_metadata,
     )
 
-    return {
-        "image_key": image_key,
-        "image_url": _object_url(image_key),
-        "thumbnail_key": thumbnail_key,
-        "thumbnail_url": _object_url(thumbnail_key),
-    }
+    return {"image_key": image_key, "thumbnail_key": thumbnail_key}
+
+
+# ai: claude-opus-5-5 | 2026-11-16
+def get_image(key: str) -> tuple[bytes, str]:
+    """Read one stored object: (bytes, content type). Raises ClientError (e.g. NoSuchKey)."""
+    obj = _s3.get_object(Bucket=settings.minio_bucket_name, Key=key)
+    with obj["Body"] as body:
+        return body.read(), obj.get("ContentType") or "application/octet-stream"
 
 
 def tag_objects_with_recipe_id(

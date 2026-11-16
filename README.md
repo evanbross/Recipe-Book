@@ -83,7 +83,8 @@ key with comments. If `.env` is missing, the backend writes a template and exits
 | Database | `POSTGRES_*` or `DATABASE_URL` | Individual vars are assembled into a URL; set `POSTGRES_SSLMODE=require` for managed hosts such as Neon |
 | Test database | `POSTGRES_TEST_*` | Used only by pytest — see [Running Tests](#running-tests) |
 | Claude | `ANTHROPIC_API_KEY` | From https://console.anthropic.com |
-| Image storage | `MINIO_*` | Endpoint, keys, bucket, and public URL of the MinIO bucket |
+| Image storage | `MINIO_*` | Endpoint, keys and bucket. The bucket stays private: images are served through the API (`GET /images/{key}`) |
+| Households | `DEFAULT_TENANT_SLUG`, `API_PUBLIC_PREFIX` | Household every request acts for until login exists (default `default`); path the browser reaches the API under (default `/api`) |
 | App | `SECRET_KEY`, `CORS_ORIGINS` | |
 | Capture listener | `CAPTURE_LISTENER_*` | Local port the Tampermonkey userscript posts captures (URL + page HTML) to |
 | Caddy | `CADDY_APP_NAME` | App hostname (`<name>.localhost`) |
@@ -193,9 +194,9 @@ S3-compatible, moving to it means restoring a backup into an R2 bucket (above) a
 pointing the `MINIO_*` settings at the R2 endpoint. Bucket setup:
 
 1. In [dash.cloudflare.com](https://dash.cloudflare.com) → **R2**, create a bucket (e.g. `recipe-images`)
-2. Enable **Public Access** on the bucket (or use a custom domain)
+2. Keep the bucket private: images are served through the API, which checks the household
 3. **R2 → Manage R2 API tokens** → create a token with Object Read & Write
-4. Use the account's S3 endpoint, the token's access key ID and secret, and the bucket's public URL
+4. Use the account's S3 endpoint and the token's access key ID and secret
 
 ---
 
@@ -216,6 +217,7 @@ Paths below are the backend's own routes. Through Caddy, prefix them with
 | DELETE | /recipes/{id} | Delete recipe (and its stored images) |
 | POST | /capture/url | Capture from web URL |
 | POST | /capture/html | Capture from page HTML the browser already loaded (for sites that block server fetches) |
+| GET | /images/{key} | A stored recipe image, served only to the household that owns it |
 | POST | /capture/image | Extract from image/scan (multipart upload) |
 | POST | /capture/scan | List links on a page for bulk capture |
 | GET | /tags | List tags (optional `category_id`) |

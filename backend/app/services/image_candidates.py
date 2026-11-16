@@ -52,6 +52,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app import models
+from app.database import current_tenant_id  # ai: claude-opus-5-5 | 2026-11-16
 from app.services import scraper as scraper_svc
 from app.services import storage as storage_svc
 from app.services.media_types import SUPPORTED_IMAGE_MEDIA_TYPES  # ai: claude-opus-5-5 | 2026-11-15
@@ -183,6 +184,7 @@ def update_preference(db: Session, sender_domain: str, selected_url: str, select
     pref_table = models.EmailImagePreference.__table__
     now = datetime.now(UTC)
     stmt = pg_insert(pref_table).values(
+        tenant_id=current_tenant_id(db),  # ai: claude-opus-5-5 | 2026-11-16 (Core insert: not auto-scoped)
         sender_domain=sender_domain,
         url_domain=_url_domain(selected_url),
         preferred_rank=selected_rank,
@@ -190,7 +192,7 @@ def update_preference(db: Session, sender_domain: str, selected_url: str, select
         last_used_at=now,
     )
     stmt = stmt.on_conflict_do_update(
-        index_elements=[pref_table.c.sender_domain],
+        index_elements=[pref_table.c.tenant_id, pref_table.c.sender_domain],
         set_={
             "url_domain": stmt.excluded.url_domain,
             "preferred_rank": stmt.excluded.preferred_rank,
@@ -326,6 +328,7 @@ def _apply_image_to_recipe(
         stored = storage_svc.upload_image(
             img_bytes,
             content_type,
+            tenant_id=recipe.tenant_id,  # ai: claude-opus-5-5 | 2026-11-16
             metadata={
                 "source-type": "email",
                 "recipe-title": recipe.title[:512],
@@ -343,9 +346,9 @@ def _apply_image_to_recipe(
 
     try:
         recipe.image_key = stored["image_key"]
-        recipe.image_url = stored["image_url"]
+        recipe.image_url = None  # ai: claude-opus-5-5 | 2026-11-16 (stored image: URL derived from the key)
         recipe.thumbnail_key = stored["thumbnail_key"]
-        recipe.thumbnail_url = stored["thumbnail_url"]
+        recipe.thumbnail_url = None
         recipe.image_pending = False
         candidate.selected = True
         db.commit()

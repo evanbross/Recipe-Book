@@ -7,7 +7,7 @@ from alembic import command
 from alembic.config import Config
 from dotenv import dotenv_values
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import sessionmaker
 
@@ -77,14 +77,14 @@ _TEST_ENV = {
     "MINIO_ACCESS_KEY": "test-access-key",
     "MINIO_SECRET_KEY": "test-secret",
     "MINIO_BUCKET_NAME": "test-bucket",
-    "MINIO_PUBLIC_URL": "http://localhost:9000/test-bucket",
     "SECRET_KEY": "test-secret-key",
     "CORS_ORIGINS": "http://localhost:5173",
     "CAPTURE_LISTENER_ENABLED": "false",
 }
 os.environ.update(_TEST_ENV)
 
-from app.database import Base, get_db  # noqa: E402
+from app.config import settings  # noqa: E402
+from app.database import Base, bind_tenant, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app import models  # noqa: E402
 
@@ -92,7 +92,7 @@ _TestSession = sessionmaker(autocommit=False, autoflush=False)
 
 
 # ai: claude-opus-5-5 | 2026-11-11
-def _alembic_config() -> Config:
+def alembic_config() -> Config:
     """Alembic config built in code (no ini file) so env.py skips fileConfig(),
     which would otherwise reconfigure logging and disable the app's loggers."""
     cfg = Config()
@@ -114,7 +114,7 @@ def engine():
     with db_engine.begin() as conn:
         conn.execute(text("DROP SCHEMA public CASCADE"))
         conn.execute(text("CREATE SCHEMA public"))
-    command.upgrade(_alembic_config(), "head")
+    command.upgrade(alembic_config(), "head")
     yield db_engine
     db_engine.dispose()
 
@@ -122,18 +122,41 @@ def engine():
 # ai: claude-opus-5-5 | 2026-11-11
 @pytest.fixture()
 def db_session(engine):
-    """Per-test session; isolation is by deleting all rows afterwards.
+    """Per-test session bound to the default household (the one every request
+    resolves to until login exists); isolation is by deleting all rows afterwards.
 
     A wrap-in-transaction-and-roll-back pattern doesn't work here without extra
     savepoint plumbing, because the routes call db.commit() themselves.
     """
     _TestSession.configure(bind=engine)
     session = _TestSession()
+    # ai: claude-opus-5-5 | 2026-11-16
+    # Migration 007 creates the default household, but per-test cleanup deletes
+    # every row, so get-or-create it each time.
+    tenant = session.scalar(select(models.Tenant).where(models.Tenant.slug == settings.default_tenant_slug))
+    if tenant is None:
+        tenant = models.Tenant(name="Test household", slug=settings.default_tenant_slug)
+        session.add(tenant)
+        session.commit()
+    bind_tenant(session, tenant.id)
     yield session
     session.close()
     with engine.begin() as conn:
         for table in reversed(Base.metadata.sorted_tables):
             conn.execute(table.delete())
+
+
+# ai: claude-opus-5-5 | 2026-11-16
+@pytest.fixture()
+def other_household(engine, db_session):
+    """A session bound to a second household, for cross-household isolation tests."""
+    session = _TestSession()
+    tenant = models.Tenant(name="Other household", slug="other")
+    session.add(tenant)
+    session.commit()
+    bind_tenant(session, tenant.id)
+    yield session
+    session.close()
 
 
 # ai: claude-opus-5-5 | 2026-11-11

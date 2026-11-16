@@ -11,7 +11,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, TenantScoped
 
 
 def _utcnow() -> datetime:
@@ -27,7 +27,7 @@ recipe_tags = Table(
 )
 
 
-class TagCategory(Base):
+class TagCategory(TenantScoped, Base):
     """
     High-level grouping for tags, e.g. Cuisine, Course, Diet, Ingredient.
     Allows browsing tags by category independently.
@@ -35,16 +35,23 @@ class TagCategory(Base):
     __tablename__ = "tag_categories"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True)   # e.g. "Cuisine"
-    slug: Mapped[str] = mapped_column(String(100), unique=True)   # e.g. "cuisine"
+    name: Mapped[str] = mapped_column(String(100))   # e.g. "Cuisine"
+    slug: Mapped[str] = mapped_column(String(100))   # e.g. "cuisine"
 
     tags: Mapped[list["Tag"]] = relationship(back_populates="category", cascade="all, delete-orphan")
 
+    # ai: claude-opus-5-5 | 2026-11-16
+    # Names and slugs are unique per household, not globally.
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_tag_categories_tenant_id_name"),
+        UniqueConstraint("tenant_id", "slug", name="uq_tag_categories_tenant_id_slug"),
+    )
 
-class Tag(Base):
+
+class Tag(TenantScoped, Base):
     """
     A tag such as 'Asian', 'Italian', 'Soup', 'Bread', 'Gluten-Free'.
-    Belongs to at most one TagCategory; slugs are unique within a category.
+    Belongs to at most one TagCategory; slugs are unique within a category per household.
     """
     __tablename__ = "tags"
 
@@ -60,14 +67,15 @@ class Tag(Base):
 
     __table_args__ = (
         # NULLS NOT DISTINCT: uncategorized tags share one slug namespace too.
+        # ai: claude-opus-5-5 | 2026-11-16
         UniqueConstraint(
-            "category_id", "slug", name="uq_tags_category_id_slug",
+            "tenant_id", "category_id", "slug", name="uq_tags_tenant_id_category_id_slug",
             postgresql_nulls_not_distinct=True,
         ),
     )
 
 
-class Recipe(Base):
+class Recipe(TenantScoped, Base):
     """
     Core recipe entity. Stores structured content extracted from web pages,
     images, email, or manual entry. Images are stored in MinIO.
@@ -107,15 +115,16 @@ class Recipe(Base):
 
     __table_args__ = (
         Index("ix_recipes_search_vector", "search_vector", postgresql_using="gin"),
+        Index("ix_recipes_tenant_id", "tenant_id"),  # ai: claude-opus-5-5 | 2026-11-16
     )
 
 
-class ScannedEmail(Base):
+class ScannedEmail(TenantScoped, Base):
     """Tracks Gmail messages that have been processed to prevent re-scanning."""
     __tablename__ = "scanned_emails"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    gmail_message_id: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    gmail_message_id: Mapped[str] = mapped_column(String(100))
     subject: Mapped[str | None] = mapped_column(String(500))
     sender: Mapped[str | None] = mapped_column(String(255))
     email_date: Mapped[str | None] = mapped_column(String(100))
@@ -125,8 +134,13 @@ class ScannedEmail(Base):
 
     candidate: Mapped["EmailRecipeCandidate | None"] = relationship(back_populates="scanned_email")
 
+    __table_args__ = (
+        # ai: claude-opus-5-5 | 2026-11-16
+        UniqueConstraint("tenant_id", "gmail_message_id", name="uq_scanned_emails_tenant_id_gmail_message_id"),
+    )
 
-class EmailRecipeCandidate(Base):
+
+class EmailRecipeCandidate(TenantScoped, Base):
     """Extracted recipe from email, queued for user review before importing."""
     __tablename__ = "email_recipe_candidates"
 
@@ -149,16 +163,21 @@ class EmailRecipeCandidate(Base):
     scanned_email: Mapped["ScannedEmail"] = relationship(back_populates="candidate")
     recipe: Mapped["Recipe | None"] = relationship()
 
+    __table_args__ = (Index("ix_email_recipe_candidates_tenant_id", "tenant_id"),)  # ai: claude-opus-5-5 | 2026-11-16
 
-class AppSetting(Base):
-    """Key-value store for user-configurable app settings persisted in the DB."""
+
+class AppSetting(TenantScoped, Base):
+    """Per-household key-value store for user-configurable app settings."""
     __tablename__ = "app_settings"
 
+    # ai: claude-opus-5-5 | 2026-11-16
+    # Primary key is (tenant_id, key): each household has its own settings.
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True)
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str] = mapped_column(Text)
 
 
-class RecipeImageCandidate(Base):
+class RecipeImageCandidate(TenantScoped, Base):
     """Up to 3 candidate images for an email-sourced recipe, pending user selection."""
     __tablename__ = "recipe_image_candidates"
 
@@ -173,8 +192,10 @@ class RecipeImageCandidate(Base):
 
     recipe: Mapped["Recipe"] = relationship(back_populates="image_candidates")
 
+    __table_args__ = (Index("ix_recipe_image_candidates_tenant_id", "tenant_id"),)  # ai: claude-opus-5-5 | 2026-11-16
 
-class WatchedSite(Base):
+
+class WatchedSite(TenantScoped, Base):
     """A website the user wants to revisit manually on a recurring schedule."""
     __tablename__ = "watched_sites"
 
@@ -185,14 +206,21 @@ class WatchedSite(Base):
     last_visited_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
+    __table_args__ = (Index("ix_watched_sites_tenant_id", "tenant_id"),)  # ai: claude-opus-5-5 | 2026-11-16
 
-class EmailImagePreference(Base):
+
+class EmailImagePreference(TenantScoped, Base):
     """Per-sender-domain record of which image the user tends to pick."""
     __tablename__ = "email_image_preferences"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    sender_domain: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    sender_domain: Mapped[str] = mapped_column(String(255))
     url_domain: Mapped[str | None] = mapped_column(String(255))   # image host the user tends to pick
     preferred_rank: Mapped[int | None] = mapped_column(Integer)   # rank (0-indexed) user tends to pick
     selection_count: Mapped[int] = mapped_column(Integer, default=0)
     last_used_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    __table_args__ = (
+        # ai: claude-opus-5-5 | 2026-11-16
+        UniqueConstraint("tenant_id", "sender_domain", name="uq_email_image_preferences_tenant_id_sender_domain"),
+    )

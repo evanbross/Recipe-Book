@@ -28,6 +28,22 @@ Cloudflare R2 is a possible future target only — it is not wired up; do not wr
 code unless asked. Recipe extraction powered by the Anthropic Claude API (vision + text).
 Recipes can also be harvested from Gmail newsletters and from a Tampermonkey userscript.
 
+**Multi-tenant (households).** Every household-owned table has `tenant_id`, and every ORM
+session is bound to one household (`backend/app/database/tenancy.py`). Queries are scoped
+automatically (`do_orm_execute` + `with_loader_criteria`) and new rows are stamped on flush,
+so routes and services do **not** filter by tenant by hand. Rules when adding code:
+- New household-owned model → inherit `TenantScoped`, add a migration, and make any
+  uniqueness rule start with `tenant_id`.
+- Core statements (`pg_insert(...)`, `text(...)`) are **not** auto-scoped: set/filter
+  `tenant_id` explicitly (`current_tenant_id(db)`).
+- Work outside a request (threads, listeners) opens `tenant_session(tenant_id)` or
+  `default_tenant_session()`; a session with no household fails closed (`TenantNotSetError`).
+  `all_tenants_session()` is the explicit opt-out for system work spanning households.
+- Until login exists every request resolves to the default household
+  (`resolve_request_tenant_id`). Gmail is still one connection per server.
+- Stored images: keys under `tenants/<id>/`, served via `GET /images/{key}`; never return
+  MinIO URLs. `tests/test_tenancy.py` holds the cross-household isolation tests.
+
 Local dev runs via the root `main.py` (picks free ports, starts uvicorn + Vite, registers
 routes with Caddy at `http://recipe-app.localhost`). There is no Docker or hosted-CI setup.
 
@@ -36,7 +52,8 @@ Key files:
 **Backend**
 - `backend/app/main.py` — FastAPI app, lifespan startup checks, router registration
 - `backend/app/config.py` — Pydantic Settings (DB, Anthropic, MinIO, CORS, capture listener, Gmail scan)
-- `backend/app/database/database.py` — SQLAlchemy engine and session factory (`get_db`)
+- `backend/app/database/database.py` — SQLAlchemy engine and session factory
+- `backend/app/database/tenancy.py` — Tenant/User/TenantMembership models, `TenantScoped` mixin, household scoping hooks, `get_db`
 - `backend/app/schemas.py` — Pydantic request/response schemas (the only schemas module)
 - `backend/app/models/models.py` — ORM models: Recipe, Tag, TagCategory, ScannedEmail,
   EmailRecipeCandidate, RecipeImageCandidate, EmailImagePreference, WatchedSite, AppSetting
@@ -44,6 +61,7 @@ Key files:
 - `backend/app/routes/tags.py` — Tags, categories, Claude tag suggestions (`/tags`)
 - `backend/app/routes/capture.py` — URL / image / link-scan ingestion (`/capture`)
 - `backend/app/routes/search.py` — Full-text + tag-filter search, PostgreSQL TSVECTOR (`/search`)
+- `backend/app/routes/images.py` — Household-checked image serving from MinIO (`/images/{key}`)
 - `backend/app/routes/email_scan.py` — Gmail OAuth, scan control, settings, candidate review (`/email`)
 - `backend/app/routes/watchlist.py` — Sites to revisit on a schedule (`/watchlist`)
 - `backend/app/services/claude_client.py` — the only Claude caller: `CLAUDE_MODEL` setting, refusal fallbacks, text-block extraction

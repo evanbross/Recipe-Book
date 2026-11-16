@@ -1,13 +1,16 @@
 import logging
 import sys
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from botocore.exceptions import BotoCoreError, ClientError
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 from app.config import settings
-from app.database import engine, SessionLocal
+from app.database import engine, get_db
 from app import models
-from app.routes import recipes, tags, capture, search, email_scan, watchlist
+from app.routes import recipes, tags, capture, search, email_scan, watchlist, images
 from app.services import storage as storage_svc
 from app.services.capture_listener import start_capture_listener
 from app.services.storage import check_connectivity as check_minio
@@ -64,6 +67,7 @@ app.include_router(capture.router)
 app.include_router(search.router)
 app.include_router(email_scan.router)
 app.include_router(watchlist.router)
+app.include_router(images.router)  # ai: claude-opus-5-5 | 2026-11-16
 
 
 @app.get("/health")
@@ -71,34 +75,28 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+# ai: claude-opus-5-5 | 2026-11-16
 @app.delete("/admin/purge-recipes", tags=["admin"])
-def purge_all_recipes() -> dict[str, int]:
+def purge_all_recipes(db: Session = Depends(get_db)) -> dict[str, int]:
     """
-    Delete every recipe and its stored images. Tags are preserved.
-    Intended for development resets — use with care.
+    Delete every recipe of the requesting household, and its stored images. Tags
+    are preserved. Intended for development resets; use with care.
     """
-    db = SessionLocal()
-    try:
-        recipes_with_images = (
-            db.query(models.Recipe)
-            .filter(models.Recipe.image_key.isnot(None))
-            .all()
-        )
-        deleted_images = 0
-        for recipe in recipes_with_images:
-            try:
-                storage_svc.delete_image(recipe.image_key, recipe.thumbnail_key)
-                deleted_images += 1
-            except Exception as exc:
-                logger.warning("purge: could not delete images for recipe %d: %s", recipe.id, exc)
+    recipes_with_images = db.query(models.Recipe).filter(models.Recipe.image_key.isnot(None)).all()
+    deleted_images = 0
+    for recipe in recipes_with_images:
+        try:
+            storage_svc.delete_image(recipe.image_key, recipe.thumbnail_key)
+            deleted_images += 1
+        except (BotoCoreError, ClientError) as exc:
+            logger.warning("purge: could not delete images for recipe %d: %s", recipe.id, exc)
 
+    try:
         deleted = db.query(models.Recipe).delete()
         db.commit()
-        logger.info("Admin purge: deleted %d recipes, cleaned %d image sets.", deleted, deleted_images)
-        return {"deleted_recipes": deleted, "deleted_image_sets": deleted_images}
-    except Exception as exc:
+    except SQLAlchemyError:
         db.rollback()
-        logger.error("Admin purge failed: %s", exc)
+        logger.exception("Admin purge failed")
         raise
-    finally:
-        db.close()
+    logger.info("Admin purge: deleted %d recipes, cleaned %d image sets.", deleted, deleted_images)
+    return {"deleted_recipes": deleted, "deleted_image_sets": deleted_images}
