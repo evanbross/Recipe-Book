@@ -82,6 +82,10 @@ MINIO_BUCKET_NAME=recipe-images
 SECRET_KEY=change-this-to-a-random-secret-key
 CORS_ORIGINS=http://localhost:5174
 
+# Sign-in (Google). Emails allowed to sign in without an invite; they join the
+# default household, and the first to sign in becomes its owner.
+AUTH_ALLOWED_EMAILS=
+
 # Caddy reverse proxy: main.py registers http://<CADDY_APP_NAME>.localhost with the
 # shared ../infra Caddy (zt-devkit's caddy_registry, from ../infra/devkit, finds its admin port).
 # /api/* and /* go to free ports chosen at each startup (FastAPI, Vite).
@@ -127,17 +131,42 @@ class Settings(BaseSettings):
     # Images are served through the API (GET /images/{key}, household-checked), never
     # straight from MinIO; this is the path prefix the browser reaches the API under.
     api_public_prefix: str = "/api"
-    # Household every request acts for until login exists (app/database/tenancy.py).
+    # Household that allowlisted users join on first sign-in (services/auth.py).  # ai: claude-opus-5-5 | 2026-11-17
     default_tenant_slug: str = "default"
     secret_key: str
     cors_origins: str = "http://localhost:5174"
 
+    # ai: claude-opus-5-5 | 2026-11-17
+    # Google sign-in and Gmail use a Desktop OAuth client, which Google only lets
+    # redirect to http://localhost:<port>. main.py passes the port uvicorn actually
+    # bound as API_PORT, so the redirect URI is derived from that one value instead
+    # of a fixed port that drifts from the real one (services/google_oauth.py).
+    api_port: int | None = None
+    # Where the browser reaches the app. Defaults to the Caddy hostname main.py
+    # registers; set APP_PUBLIC_URL only when serving it somewhere else.
+    caddy_app_name: str = "recipe-app"
+    app_public_url: str | None = None
+    # Comma-separated emails allowed to sign in without an invite. On first
+    # sign-in they join the default household (the first becomes its owner).
+    auth_allowed_emails: str = ""
+    session_lifetime_days: int = 30
+
     # Gmail / email scanning
-    google_oauth_redirect_uri: str = "http://localhost:8088/email/auth/callback"
     email_scan_labels: str = "Cooking"
     email_scan_inbox: bool = False
     email_scan_inbox_lookback_days: int = 30
     email_scan_max_per_folder: int = 50
+
+    # ai: claude-opus-5-5 | 2026-11-17
+    @property
+    def public_url(self) -> str:
+        """The app's browser-facing origin, without a trailing slash."""
+        return (self.app_public_url or f"http://{self.caddy_app_name}.localhost").rstrip("/")
+
+    # ai: claude-opus-5-5 | 2026-11-17
+    @property
+    def allowed_emails(self) -> frozenset[str]:
+        return frozenset(e.strip().lower() for e in self.auth_allowed_emails.split(",") if e.strip())
 
     @model_validator(mode="after")
     def _resolve_database_url(self) -> "Settings":

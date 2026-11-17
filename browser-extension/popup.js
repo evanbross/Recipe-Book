@@ -39,8 +39,14 @@ pageEl.textContent = capturable ? `${new URL(tab.url).hostname} — ${tab.title 
 
 // ── Tags ──────────────────────────────────────────────────────────────────────
 
+// ai: claude-opus-5-5 | 2026-11-17
+class NotSignedInError extends Error {}
+
 async function fetchJsonArray(url) {
-    const res = await fetch(url, { signal: AbortSignal.timeout(TAG_LOAD_TIMEOUT_MS) });
+    const res = await fetch(url, { credentials: 'include', signal: AbortSignal.timeout(TAG_LOAD_TIMEOUT_MS) });
+    if (res.status === 401) {
+        throw new NotSignedInError(`401 from ${url}`);
+    }
     if (!res.ok) {
         throw new Error(`HTTP ${res.status} from ${url}`);
     }
@@ -62,7 +68,9 @@ async function loadTags() {
         tagLoadError = null;
     } catch (err) {
         console.warn('[popup] could not load tags', err);
-        tagLoadError = "Couldn't load tags from Recipe App. The recipe can still be saved without them.";
+        tagLoadError = err instanceof NotSignedInError
+            ? `You're not signed in to Recipe App. Sign in at ${appUrl} first.`  // ai: claude-opus-5-5 | 2026-11-17
+            : "Couldn't load tags from Recipe App. The recipe can still be saved without them.";
     }
     renderTags();
 }

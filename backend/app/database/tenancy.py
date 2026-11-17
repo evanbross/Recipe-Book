@@ -26,15 +26,19 @@ can't leak another household's data:
 Not covered (keep these explicit): Core statements such as pg_insert(...)
 must set tenant_id themselves, and raw SQL text() is not filtered.
 
-Until login exists, every request belongs to the default household
-(settings.default_tenant_slug). Swapping resolve_request_tenant_id() for a
-lookup from the authenticated user is the only change auth needs here.
+Requests act for the household of the signed-in user's session
+(get_current_auth): the session cookie names a UserSession row, which names
+the user and their active household. The lookup joins through
+TenantMembership, so removing a member ends their access on the next request.
 """
+import hashlib
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, String, event, select
+from fastapi import Depends, Request
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, event, select
 from sqlalchemy.orm import (
     Mapped, ORMExecuteState, Session, mapped_column, with_loader_criteria,
 )
@@ -52,6 +56,16 @@ class TenantNotSetError(RuntimeError):
 
 class TenantMismatchError(RuntimeError):
     """A new row names a different household than the session it was added to."""
+
+
+# ai: claude-opus-5-5 | 2026-11-17
+class NotSignedInError(RuntimeError):
+    """The request has no valid sign-in session (main.py turns this into a 401)."""
+
+
+ROLE_OWNER = "owner"
+ROLE_MEMBER = "member"
+SESSION_COOKIE_NAME = "recipe_session"
 
 
 def _utcnow() -> datetime:
@@ -88,12 +102,47 @@ class TenantMembership(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
+# ai: claude-opus-5-5 | 2026-11-17
+class UserSession(Base):
+    """A signed-in browser. The cookie holds a random token; only its SHA-256
+    is stored, so a database leak doesn't hand out live sessions."""
+    __tablename__ = "user_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    # The household this session acts for. Not TenantScoped: it is looked up
+    # before the request knows its household.
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+# ai: claude-opus-5-5 | 2026-11-17
+def hash_session_token(token: str) -> str:
+    # The token is 256 random bits, so a fast hash is enough: there is nothing to brute-force.
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
 class TenantScoped:
     """Mixin for household-owned tables. Not indexed here: each table indexes
     tenant_id itself, or leads a composite unique/PK with it, so no table gets
     a redundant second index."""
 
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"))
+
+
+# ai: claude-opus-5-5 | 2026-11-17
+class TenantInvite(TenantScoped, Base):
+    """An email invited to join a household. Accepted (and deleted) the next
+    time that email signs in with Google."""
+    __tablename__ = "tenant_invites"
+    __table_args__ = (UniqueConstraint("tenant_id", "email", name="tenant_invites_tenant_email_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), index=True)   # stored lower-cased
+    invited_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 # ── session binding ───────────────────────────────────────────────────────────
@@ -121,19 +170,49 @@ def resolve_default_tenant_id(db: Session) -> int:
     return tenant_id
 
 
-def resolve_request_tenant_id(db: Session) -> int:
-    """The household the current request acts for. Default household until login exists."""
-    return resolve_default_tenant_id(db)
+# ai: claude-opus-5-5 | 2026-11-17
+@dataclass(frozen=True)
+class AuthContext:
+    user_id: int
+    tenant_id: int
+    role: str
 
 
-def get_db() -> Generator[Session, None, None]:
-    """FastAPI dependency: a session bound to the requesting household."""
+def get_request_session() -> Generator[Session, None, None]:
+    """FastAPI dependency: the request's one DB session, not yet bound to a household.
+    FastAPI caches it per request, so get_current_auth and get_db share it."""
     db = SessionLocal()
     try:
-        bind_tenant(db, resolve_request_tenant_id(db))
         yield db
     finally:
         db.close()
+
+
+def get_current_auth(request: Request, db: Session = Depends(get_request_session)) -> AuthContext:
+    """FastAPI dependency: who is signed in, and the household they act for."""
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not token:
+        raise NotSignedInError("No session cookie.")
+    row = db.execute(
+        select(UserSession.user_id, UserSession.tenant_id, TenantMembership.role)
+        .join(
+            TenantMembership,
+            (TenantMembership.user_id == UserSession.user_id)
+            & (TenantMembership.tenant_id == UserSession.tenant_id),
+        )
+        .where(UserSession.token_hash == hash_session_token(token), UserSession.expires_at > _utcnow())
+    ).one_or_none()
+    if row is None:
+        raise NotSignedInError("Session expired, signed out, or no longer a member.")
+    return AuthContext(user_id=row.user_id, tenant_id=row.tenant_id, role=row.role)
+
+
+def get_db(
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_request_session),
+) -> Session:
+    """FastAPI dependency: the request's session, bound to the signed-in household."""
+    return bind_tenant(db, auth.tenant_id)
 
 
 @contextmanager

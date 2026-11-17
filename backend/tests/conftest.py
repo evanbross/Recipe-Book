@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -83,7 +84,10 @@ _TEST_ENV = {
 os.environ.update(_TEST_ENV)
 
 from app.config import settings  # noqa: E402
-from app.database import Base, bind_tenant, get_db  # noqa: E402
+from app.database import (  # noqa: E402
+    ROLE_OWNER, AuthContext, Base, TenantMembership, User, bind_tenant, current_tenant_id,
+    get_current_auth, get_db,
+)
 from app.main import app  # noqa: E402
 from app import models  # noqa: E402
 
@@ -121,8 +125,8 @@ def engine():
 # ai: claude-opus-5-5 | 2026-11-11
 @pytest.fixture()
 def db_session(engine):
-    """Per-test session bound to the default household (the one every request
-    resolves to until login exists); isolation is by deleting all rows afterwards.
+    """Per-test session bound to the default household (the one allowlisted users
+    join, and the one `client` acts for); isolation is by deleting all rows afterwards.
 
     A wrap-in-transaction-and-roll-back pattern doesn't work here without extra
     savepoint plumbing, because the routes call db.commit() themselves.
@@ -158,18 +162,43 @@ def other_household(engine, db_session):
     session.close()
 
 
-# ai: claude-opus-5-5 | 2026-11-11
+# ai: claude-opus-5-5 | 2026-11-17
 @pytest.fixture()
-def client(db_session):
+def signed_in_user(db_session) -> AuthContext:
+    """A real user who owns the default household, as route tests act for them."""
+    user = User(email="owner@example.com", display_name="Owner")
+    db_session.add(user)
+    db_session.flush()
+    tenant_id = current_tenant_id(db_session)
+    db_session.add(TenantMembership(tenant_id=tenant_id, user_id=user.id, role=ROLE_OWNER))
+    db_session.commit()
+    return AuthContext(user_id=user.id, tenant_id=tenant_id, role=ROLE_OWNER)
+
+
+# ai: claude-opus-5-5 | 2026-11-17
+@pytest.fixture()
+def client(db_session, signed_in_user):
+    """A client acting as signed_in_user, on the test's db_session. The sign-in
+    flow itself (cookies, sessions) is tested without these overrides in test_auth.py."""
     def override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_auth] = lambda: signed_in_user
     # The lifespan's MinIO check would sys.exit(1) — killing the whole run — when
     # MinIO isn't reachable. The DB check is left real: it hits the test DB.
     with patch("app.main.check_minio"), TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+# ai: claude-opus-5-5 | 2026-11-17
+@pytest.fixture()
+def anon_client(db_session):
+    """A client with no dependency overrides: requests go through the real
+    sign-in check and their own DB sessions (on the test database)."""
+    with patch("app.main.check_minio"), TestClient(app) as c:
+        yield c
 
 
 @pytest.fixture()
@@ -224,3 +253,19 @@ def make_recipe(db_session):
         return recipe
 
     return _make_recipe
+
+
+# ai: claude-opus-5-5 | 2026-11-17
+@pytest.fixture()
+def fake_google_credentials(tmp_path):
+    """A Desktop-type OAuth client file, so OAuth tests never read the real one."""
+    path = tmp_path / "google_credentials.json"
+    path.write_text(json.dumps({"installed": {
+        "client_id": "test-client.apps.googleusercontent.com",
+        "client_secret": "test-secret",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "redirect_uris": ["http://localhost"],
+    }}))
+    with patch("app.services.google_oauth.GOOGLE_CREDENTIALS_FILE", path):
+        yield path

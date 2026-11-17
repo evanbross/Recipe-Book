@@ -84,6 +84,8 @@ async function runCapture(tabId, tagIds) {
     try {
         res = await fetch(`${appUrl}/api/capture/html`, {
             method: 'POST',
+            // ai: claude-opus-5-5 | 2026-11-17 — send the app's sign-in cookie from this browser
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url: page.url, html: page.html, tag_ids: tagIds }),  // ai: claude-opus-5-5 | 2026-11-16
             signal: AbortSignal.timeout(CAPTURE_TIMEOUT_MS),
@@ -97,6 +99,10 @@ async function runCapture(tabId, tagIds) {
     }
 
     const body = await res.json().catch(() => null);
+    // ai: claude-opus-5-5 | 2026-11-17
+    if (res.status === 401) {
+        return failure(`You're not signed in to Recipe App. Sign in at ${appUrl}, then capture again.`);
+    }
     if (!res.ok) {
         return failure(describeError(res.status, body));
     }

@@ -21,6 +21,8 @@ dependencies = [
     "google-auth-oauthlib>=1.2.0",
     "google-api-python-client>=2.164.0",
     "psycopg2-binary>=2.9.10",
+    "requests>=2.32",
+    "oauthlib>=3.2",
 ]
 
 [dependency-groups]

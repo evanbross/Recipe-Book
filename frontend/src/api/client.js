@@ -2,6 +2,30 @@ import axios from 'axios'
 
 const api = axios.create({ baseURL: '/api' })
 
+// ai: claude-opus-5-5 | 2026-11-17
+// The browser starts sign-in by navigating here (a full page load, not XHR):
+// the API redirects to Google, and the session cookie comes back on the redirect.
+export const SIGN_IN_URL = '/api/auth/login'
+
+// A 401 means the session ended (expired, signed out elsewhere, or removed from
+// the household). Send the user to the login page rather than leaving every
+// query failing. /auth/me is left to RequireAuth, which redirects on its own.
+api.interceptors.response.use(undefined, (error) => {
+  const isMe = error.config?.url === '/auth/me'
+  if (error.response?.status === 401 && !isMe && window.location.pathname !== '/login') {
+    window.location.assign('/login')
+  }
+  return Promise.reject(error)
+})
+
+// ── Sign-in and household ──────────────────────────────────────────────────
+export const getMe = () => api.get('/auth/me').then(r => r.data)
+export const logout = () => api.post('/auth/logout')
+export const getHousehold = () => api.get('/household').then(r => r.data)
+export const inviteToHousehold = (email) => api.post('/household/invites', { email }).then(r => r.data)
+export const revokeInvite = (id) => api.delete(`/household/invites/${id}`)
+export const removeHouseholdMember = (userId) => api.delete(`/household/members/${userId}`)
+
 // ── Recipes ────────────────────────────────────────────────────────────────
 export const getRecipes = (params) => api.get('/recipes', { params }).then(r => r.data)
 export const getRecipe = (id) => api.get(`/recipes/${id}`).then(r => r.data)

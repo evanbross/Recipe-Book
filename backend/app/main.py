@@ -2,15 +2,17 @@ import logging
 import sys
 from contextlib import asynccontextmanager
 from botocore.exceptions import BotoCoreError, ClientError
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from app.config import settings
-from app.database import engine, get_db
+from app.database import NotSignedInError, engine, get_current_auth, get_db  # ai: claude-opus-5-5 | 2026-11-17
 from app import models
-from app.routes import recipes, tags, capture, search, email_scan, watchlist, images
+from app.routes import auth, capture, email_scan, households, images, recipes, search, tags, watchlist  # ai: claude-opus-5-5 | 2026-11-17
+from app.routes.households import require_owner
 from app.services import storage as storage_svc
 from app.services.storage import check_connectivity as check_minio
 
@@ -59,13 +61,47 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(recipes.router)
-app.include_router(tags.router)
-app.include_router(capture.router)
-app.include_router(search.router)
-app.include_router(email_scan.router)
-app.include_router(watchlist.router)
-app.include_router(images.router)  # ai: claude-opus-5-5 | 2026-11-16
+# ai: claude-opus-5-5 | 2026-11-17
+# Every data route needs a signed-in session. Routes that must stay public live
+# on routers included without it: /health, the sign-in flow, and the two OAuth
+# callbacks Google sends to http://localhost:<port>, where there is no cookie.
+# tests/test_auth.py fails if any other route is reachable without signing in.
+_signed_in = [Depends(get_current_auth)]
+for _router in (
+    recipes.router, tags.router, capture.router, search.router, email_scan.router,
+    watchlist.router, images.router, households.router,
+):
+    app.include_router(_router, dependencies=_signed_in)
+app.include_router(auth.router)
+app.include_router(email_scan.callback_router)
+
+
+@app.exception_handler(NotSignedInError)
+async def _not_signed_in(_request: Request, _exc: NotSignedInError) -> JSONResponse:
+    return JSONResponse(status_code=401, content={"detail": "Not signed in."})
+
+
+# ai: claude-opus-5-5 | 2026-11-17
+# The session cookie is SameSite=Lax, but every *.localhost dev app counts as the
+# same site as recipe-app.localhost, so Lax alone would let another local app post
+# with this one's cookie. Writes must come from the app itself or an extension
+# (the capture extension posts from chrome-extension://<id>).
+_TRUSTED_ORIGINS = frozenset({settings.public_url, *(o.strip().rstrip("/") for o in settings.cors_origins.split(","))})
+_UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+@app.middleware("http")
+async def _refuse_foreign_writes(request: Request, call_next) -> Response:
+    origin = request.headers.get("origin")
+    if (
+        request.method in _UNSAFE_METHODS
+        and origin is not None
+        and origin not in _TRUSTED_ORIGINS
+        and not origin.startswith("chrome-extension://")
+    ):
+        logger.warning("Refused %s %s from origin %s.", request.method, request.url.path, origin)
+        return JSONResponse(status_code=403, content={"detail": "Request from an untrusted origin."})
+    return await call_next(request)
 
 
 @app.get("/health")
@@ -74,7 +110,7 @@ def health() -> dict[str, str]:
 
 
 # ai: claude-opus-5-5 | 2026-11-16
-@app.delete("/admin/purge-recipes", tags=["admin"])
+@app.delete("/admin/purge-recipes", tags=["admin"], dependencies=[Depends(require_owner)])  # ai: claude-opus-5-5 | 2026-11-17
 def purge_all_recipes(db: Session = Depends(get_db)) -> dict[str, int]:
     """
     Delete every recipe of the requesting household, and its stored images. Tags

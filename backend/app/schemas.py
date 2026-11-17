@@ -307,3 +307,48 @@ class WatchedSiteOut(BaseModel):
         return elapsed >= self.check_every_days * 86400
 
     model_config = {"from_attributes": True}
+
+
+# ── Sign-in and household ─────────────────────────────────────────────────────
+# ai: claude-opus-5-5 | 2026-11-17
+
+class SignedInUser(BaseModel):
+    id: int
+    email: str
+    display_name: Optional[str] = None
+
+class HouseholdRef(BaseModel):
+    id: int
+    name: str
+
+class MeOut(BaseModel):
+    user: SignedInUser
+    household: HouseholdRef
+    role: str
+
+class HouseholdMemberOut(BaseModel):
+    user_id: int
+    email: str
+    display_name: Optional[str] = None
+    role: str
+    model_config = {"from_attributes": True}
+
+class HouseholdInviteOut(BaseModel):
+    id: int
+    email: str
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+class HouseholdOut(BaseModel):
+    id: int
+    name: str
+    members: list[HouseholdMemberOut]
+    invites: list[HouseholdInviteOut]
+    model_config = {"from_attributes": True}
+
+class InviteCreate(BaseModel):
+    # Lower-cased like users.email, so an invite always matches the Google sign-in it waits for.
+    email: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, to_lower=True, max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$"),
+    ]

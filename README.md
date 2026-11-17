@@ -90,6 +90,27 @@ The capture keeps running if you close the popup. The icon shows … while it wo
 `http://recipe-app.localhost` by default; if `CADDY_APP_NAME` is different, set the
 address under **Settings** in the popup, which also tests the connection. After you
 change any file in `browser-extension/`, click the reload icon on the extension's card.
+The extension uses your browser's Recipe App sign-in, so sign in to the app first.
+
+### Signing in
+
+The app uses Google sign-in, with the same Desktop OAuth client as Gmail
+(`backend/credentials/google_credentials.json`). Nothing needs registering in Google
+Cloud Console: Google redirects to `http://localhost:<backend port>`, which `main.py`
+passes to the backend as `API_PORT`, and the backend then forwards you to the app.
+If you start uvicorn yourself, set `API_PORT` to its port or sign-in is disabled.
+
+Who can sign in:
+
+- Emails in `AUTH_ALLOWED_EMAILS` (comma-separated). On first sign-in they join the
+  default household, which holds all recipes from before sign-in existed. The first one
+  to sign in becomes its **owner**.
+- Anyone the owner invites under **Settings → Household**. The invite is accepted the
+  next time that Google account signs in.
+
+Once someone belongs to a household, the membership is what counts: removing them from
+`AUTH_ALLOWED_EMAILS` doesn't lock them out. The owner removes them in Settings instead,
+which signs them out immediately. Sessions last 30 days (`SESSION_LIFETIME_DAYS`).
 
 ---
 
@@ -104,10 +125,11 @@ key with comments. If `.env` is missing, the backend writes a template and exits
 | Test database | `POSTGRES_TEST_*` | Used only by pytest — see [Running Tests](#running-tests) |
 | Claude | `ANTHROPIC_API_KEY` | From https://console.anthropic.com |
 | Image storage | `MINIO_*` | Endpoint, keys and bucket. The bucket stays private: images are served through the API (`GET /images/{key}`) |
-| Households | `DEFAULT_TENANT_SLUG`, `API_PUBLIC_PREFIX` | Household every request acts for until login exists (default `default`); path the browser reaches the API under (default `/api`) |
+| Households | `DEFAULT_TENANT_SLUG`, `API_PUBLIC_PREFIX` | Household allowlisted users join (default `default`); path the browser reaches the API under (default `/api`) |
+| Sign-in | `AUTH_ALLOWED_EMAILS`, `SESSION_LIFETIME_DAYS`, `APP_PUBLIC_URL` | See [Signing in](#signing-in). `APP_PUBLIC_URL` defaults to `http://<CADDY_APP_NAME>.localhost`. `API_PORT` is set by `main.py` |
 | App | `SECRET_KEY`, `CORS_ORIGINS` | |
 | Caddy | `CADDY_APP_NAME` | App hostname (`<name>.localhost`) |
-| Email scanning | `GOOGLE_OAUTH_REDIRECT_URI`, `EMAIL_SCAN_*` | Gmail OAuth; credentials go in `backend/credentials/` |
+| Email scanning | `EMAIL_SCAN_*` | Gmail OAuth uses the same credentials as sign-in, in `backend/credentials/` |
 
 ---
 
@@ -222,13 +244,19 @@ pointing the `MINIO_*` settings at the R2 endpoint. Bucket setup:
 ## API Reference
 
 Paths below are the backend's own routes. Through Caddy, prefix them with
-`http://recipe-app.localhost/api`.
+`http://recipe-app.localhost/api`. Everything except the routes marked public needs a
+signed-in session cookie; without one the API answers 401.
 
 ### Key endpoints
 
 | Method | Path | Description |
 |---|---|---|
-| GET | /health | Health check |
+| GET | /health | Health check (public) |
+| GET | /auth/login | Start Google sign-in (public; open in the browser) |
+| GET | /auth/me | The signed-in user, household and role |
+| POST | /auth/logout | End this session |
+| GET | /household | Members and pending invites |
+| POST | /household/invites | Invite an email (owner only) |
 | GET | /recipes | List recipes (`skip`, `limit`) |
 | GET | /recipes/{id} | Get single recipe |
 | POST | /recipes | Create manually |
@@ -309,7 +337,7 @@ Recipe App/
 │   │   ├── schemas.py       # Pydantic request/response schemas
 │   │   ├── database/        # SQLAlchemy engine, session, get_db
 │   │   ├── models/          # ORM models
-│   │   ├── routes/          # recipes, tags, capture, search, email_scan, watchlist
+│   │   ├── routes/          # recipes, tags, capture, search, email_scan, watchlist, auth, households
 │   │   └── services/        # vision (Claude), storage (MinIO), scraper, sources,
 │   │                        # tagger, gmail_client, recipe_capture, ...
 │   ├── alembic/             # DB migrations

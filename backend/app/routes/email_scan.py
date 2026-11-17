@@ -31,19 +31,19 @@ Email scan routes: Gmail OAuth, scan control, settings, and candidate management
 from __future__ import annotations
 
 import logging
-import secrets
 import threading
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
-from google_auth_oauthlib.flow import Flow
+import requests
+from oauthlib.oauth2.rfc6749.errors import OAuth2Error
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.config import GMAIL_SCOPES, GOOGLE_CREDENTIALS_FILE, GOOGLE_TOKEN_FILE, settings
+from app.config import GMAIL_SCOPES, GOOGLE_TOKEN_FILE, settings
 from app.database import SessionLocal, bind_tenant, current_tenant_id, get_db  # ai: claude-opus-5-5 | 2026-11-16
 from app import models
 from app.schemas import (
@@ -58,6 +58,7 @@ from app.schemas import (
     ScanLogEntry,
 )
 from app.services.gmail_client import GmailClient, NotAuthenticatedError
+from app.services.google_oauth import OAuthNotConfiguredError, PendingStore, build_flow  # ai: claude-opus-5-5 | 2026-11-17
 from app.services.recipe_email_parser import parse_recipe_from_email, parse_recipe_from_page
 from app.services.email_link_extractor import extract_recipe_links
 from app.services import image_candidates as img_cand_svc
@@ -69,10 +70,15 @@ from app.services import vision as vision_svc
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/email", tags=["email"])
+# ai: claude-opus-5-5 | 2026-11-17
+# Google redirects the Gmail OAuth callback to http://localhost:<API port>, where
+# the browser has no sign-in cookie, so it can't sit behind the sign-in check.
+# The OAuth state, issued by the signed-in /auth/connect call, authorizes it.
+callback_router = APIRouter(prefix="/email", tags=["email"])
+_CALLBACK_PATH = f"{callback_router.prefix}/auth/callback"
 
-# Maps state token → PKCE code_verifier. Server-side dict avoids session-cookie
-# issues when a dev proxy sits between the browser and the API.
-_pending_auths: dict[str, str] = {}
+# OAuth state -> PKCE code_verifier while the user is on Google's consent page.
+_pending_auths: PendingStore[str] = PendingStore(ttl_seconds=600)
 
 _scan_status: dict[str, Any] = {
     "running": False,
@@ -103,61 +109,47 @@ def auth_status() -> EmailAuthStatus:
     return EmailAuthStatus(authenticated=GOOGLE_TOKEN_FILE.exists())
 
 
+# ai: claude-opus-5-5 | 2026-11-17
 @router.get("/auth/connect", response_model=EmailConnectResponse)
 def auth_connect() -> EmailConnectResponse:
-    if not GOOGLE_CREDENTIALS_FILE.exists():
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                # ai: claude-opus-5-5 | 2026-11-13 — name comes from config, not a stale literal
-                f"{GOOGLE_CREDENTIALS_FILE.name} not found in backend/credentials/. "
-                "Download OAuth2 Desktop credentials from Google Cloud Console and save them there."
-            ),
-        )
-    flow = Flow.from_client_secrets_file(
-        str(GOOGLE_CREDENTIALS_FILE),
-        scopes=GMAIL_SCOPES,
-        redirect_uri=settings.google_oauth_redirect_uri,
-    )
-    state = secrets.token_urlsafe(32)
-    auth_url, _ = flow.authorization_url(
+    try:
+        flow = build_flow(GMAIL_SCOPES, _CALLBACK_PATH)
+    except OAuthNotConfiguredError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    auth_url, state = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
         prompt="consent",
-        code_challenge_method="S256",
-        state=state,
     )
-    _pending_auths[state] = flow.code_verifier
+    _pending_auths.add(state, flow.code_verifier)
     return EmailConnectResponse(auth_url=auth_url)
 
 
-@router.get("/auth/callback")
+# ai: claude-opus-5-5 | 2026-11-17
+@callback_router.get("/auth/callback")
 def auth_callback(code: str | None = None, state: str = "", error: str | None = None) -> RedirectResponse:
-    frontend = _frontend_origin()
-    if error:
-        logger.warning("Gmail OAuth error: %s", error)
-        return RedirectResponse(f"{frontend}/add?email_auth=error")
-    if not code:
-        return RedirectResponse(f"{frontend}/add?email_auth=error")
+    result_page = f"{settings.public_url}/add?email_auth="
+    if error or not code:
+        logger.warning("Gmail OAuth error: %s", error or "no code")
+        return RedirectResponse(result_page + "error")
 
-    code_verifier = _pending_auths.pop(state, None)
+    code_verifier = _pending_auths.pop(state)
     if not code_verifier:
-        logger.warning("OAuth state mismatch for state=%r", state)
-        return RedirectResponse(f"{frontend}/add?email_auth=error")
+        logger.warning("Gmail OAuth callback with an unknown or expired state.")
+        return RedirectResponse(result_page + "error")
 
-    flow = Flow.from_client_secrets_file(
-        str(GOOGLE_CREDENTIALS_FILE),
-        scopes=GMAIL_SCOPES,
-        redirect_uri=settings.google_oauth_redirect_uri,
-    )
-    flow.code_verifier = code_verifier
-    flow.fetch_token(code=code)
+    try:
+        flow = build_flow(GMAIL_SCOPES, _CALLBACK_PATH)
+        flow.code_verifier = code_verifier
+        flow.fetch_token(code=code)
+    except (OAuthNotConfiguredError, OAuth2Error, requests.RequestException) as exc:
+        logger.warning("Gmail OAuth token exchange failed: %s", exc)
+        return RedirectResponse(result_page + "error")
 
     GOOGLE_TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
     GOOGLE_TOKEN_FILE.write_text(flow.credentials.to_json())
     logger.info("Gmail OAuth token saved.")
-
-    return RedirectResponse(f"{frontend}/add?email_auth=success")
+    return RedirectResponse(result_page + "success")
 
 
 @router.delete("/auth", status_code=status.HTTP_200_OK)
@@ -746,10 +738,6 @@ def _process_one_message(
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _frontend_origin() -> str:
-    return settings.cors_origins.split(",")[0].strip()
-
 
 def _get_setting(db: Session, key: str, default: str) -> str:
     # ai: claude-opus-5-5 | 2026-11-16

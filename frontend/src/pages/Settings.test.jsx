@@ -12,7 +12,7 @@ import userEvent from '@testing-library/user-event'
 import toast from 'react-hot-toast'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  getEmailAuthStatus, getEmailSettings, getWatchedSites, updateEmailSettings,
+  getEmailAuthStatus, getEmailSettings, getHousehold, getMe, getWatchedSites, updateEmailSettings,
 } from '../api/client'
 import { renderWithProviders } from '../test/render'
 import Settings from './Settings'
@@ -28,6 +28,18 @@ const SAVED = {
   max_per_folder: 25,
 }
 
+// ai: claude-opus-5-5 | 2026-11-17
+const ME = { user: { id: 1, email: 'owner@example.com', display_name: 'Owner' }, household: { id: 1, name: 'Home' }, role: 'owner' }
+const HOUSEHOLD = {
+  id: 1,
+  name: 'Home',
+  members: [
+    { user_id: 1, email: 'owner@example.com', display_name: 'Owner', role: 'owner' },
+    { user_id: 2, email: 'cook@example.com', display_name: null, role: 'member' },
+  ],
+  invites: [{ id: 7, email: 'guest@example.com', created_at: '2026-11-17T00:00:00Z' }],
+}
+
 const updatePayloads = () => updateEmailSettings.mock.calls.map(([variables]) => variables)
 
 describe('Settings — email scan form', () => {
@@ -35,6 +47,8 @@ describe('Settings — email scan form', () => {
     getEmailAuthStatus.mockResolvedValue({ authenticated: true })
     getEmailSettings.mockResolvedValue(SAVED)
     getWatchedSites.mockResolvedValue([])
+    getMe.mockResolvedValue(ME)  // ai: claude-opus-5-5 | 2026-11-17
+    getHousehold.mockResolvedValue(HOUSEHOLD)
     updateEmailSettings.mockImplementation((data) => Promise.resolve(data))
   })
 

@@ -41,6 +41,7 @@ import {
   deleteWatchedSite,
   purgeAllRecipes,
 } from '../api/client'
+import HouseholdSection from './HouseholdSection'  // ai: claude-opus-5-5 | 2026-11-17
 import styles from './Settings.module.css'
 
 export default function Settings() {
@@ -254,6 +255,8 @@ export default function Settings() {
   return (
     <div className="page-container">
       <h1 className="section-title">Settings</h1>
+
+      <HouseholdSection />
 
       {/* ── Gmail Integration ──────────────────────────────────────────────── */}
       <section className={styles.section}>

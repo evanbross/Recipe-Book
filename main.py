@@ -43,6 +43,7 @@ For the background GUI launcher (no terminal window required), use launcher.py.
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -91,15 +92,15 @@ def _info(msg: str) -> None:
 
 # ── subprocess helpers ────────────────────────────────────────────────────────
 
-def _popen(args: list[str], *, cwd: str) -> subprocess.Popen:
+def _popen(args: list[str], *, cwd: str, env: dict[str, str] | None = None) -> subprocess.Popen:
     """Start a subprocess, routing its output to server.log in headless mode."""
     if _log_fh:
         return subprocess.Popen(
-            args, cwd=cwd,
+            args, cwd=cwd, env=env,
             stdout=_log_fh, stderr=subprocess.STDOUT,
             creationflags=_NO_WINDOW,
         )
-    return subprocess.Popen(args, cwd=cwd, creationflags=_NO_WINDOW)
+    return subprocess.Popen(args, cwd=cwd, env=env, creationflags=_NO_WINDOW)
 
 
 # ── Caddy helpers ─────────────────────────────────────────────────────────────
@@ -193,6 +194,10 @@ if __name__ == "__main__":
                 "--host", "0.0.0.0", "--port", str(backend_port),
             ],
             cwd=str(_BACKEND_DIR),
+            # ai: claude-opus-5-5 | 2026-11-17
+            # Google OAuth redirects to http://localhost:<this port>; the backend
+            # derives its redirect URIs from API_PORT, so pass the port it really binds.
+            env={**os.environ, "API_PORT": str(backend_port)},
         )
 
         _info("[STATUS] Waiting for backend...")

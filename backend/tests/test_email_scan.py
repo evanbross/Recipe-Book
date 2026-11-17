@@ -13,10 +13,12 @@
 Gmail, the OAuth token/credential files, and the scan thread are stubbed; the
 module-level scan status dict is restored after each test via patch.dict."""
 from unittest.mock import MagicMock, patch
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
 from app import models
+from app.config import settings
 
 _SCAN_STATUS = "app.routes.email_scan._scan_status"
 _TOKEN_FILE = "app.routes.email_scan.GOOGLE_TOKEN_FILE"
@@ -197,10 +199,29 @@ def test_reset_history_deletes_rows_and_is_blocked_while_running(client, db_sess
 
 def test_connect_without_credentials_names_the_configured_file(client, tmp_path):
     missing = tmp_path / "google_credentials.json"
-    with patch("app.routes.email_scan.GOOGLE_CREDENTIALS_FILE", missing):
+    with patch("app.services.google_oauth.GOOGLE_CREDENTIALS_FILE", missing):  # ai: claude-opus-5-5 | 2026-11-17
         res = client.get("/email/auth/connect")
     assert res.status_code == 400
     assert "google_credentials.json" in res.json()["detail"]
+
+
+# ai: claude-opus-5-5 | 2026-11-17
+def test_connect_redirects_to_the_bound_api_port(client, monkeypatch, fake_google_credentials):
+    """The redirect URI follows API_PORT (the port main.py bound), not a fixed port."""
+    monkeypatch.setattr(settings, "api_port", 54321)
+    res = client.get("/email/auth/connect")
+    assert res.status_code == 200
+    query = parse_qs(urlparse(res.json()["auth_url"]).query)
+    assert query["redirect_uri"] == ["http://localhost:54321/email/auth/callback"]
+    assert query["code_challenge_method"] == ["S256"]
+
+
+# ai: claude-opus-5-5 | 2026-11-17
+def test_connect_without_api_port_explains_why(client, monkeypatch, fake_google_credentials):
+    monkeypatch.setattr(settings, "api_port", None)
+    res = client.get("/email/auth/connect")
+    assert res.status_code == 400
+    assert "API_PORT" in res.json()["detail"]
 
 
 @pytest.mark.parametrize("query", ["?error=access_denied", "", "?code=abc&state=unknown-state"])
