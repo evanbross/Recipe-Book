@@ -29,3 +29,4 @@ Thumbs.db
 
 # MinIO backups (scripts/backup_minio.py) -- local binary data, not source
 /backend/backups/
+/backend/credentials/google_credentials.json
