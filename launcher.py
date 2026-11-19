@@ -51,9 +51,9 @@ from tkinter import font as tkfont, messagebox, ttk
 
 # ai: claude-opus-5-5 | 2026-11-12
 # main.py owns Caddy registration; reuse its deregister rather than keeping a second
-# copy. Importing main also checks that zt-devkit (../infra/devkit) is installed.
+# copy. Importing main also checks that zt-common (../infra/zt-common) is installed.
 from main import caddy_deregister
-from zt_devkit import devrun
+from zt_common import devrun
 
 _HERE = Path(__file__).resolve().parent
 _BACKEND_DIR = _HERE / "backend"

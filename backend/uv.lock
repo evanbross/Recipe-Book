@@ -903,13 +903,13 @@ dependencies = [
     { name = "requests" },
     { name = "sqlalchemy" },
     { name = "uvicorn" },
+    { name = "zt-common" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
-    { name = "zt-devkit" },
 ]
 
 [package.metadata]
@@ -933,13 +933,13 @@ requires-dist = [
     { name = "requests", specifier = ">=2.32" },
     { name = "sqlalchemy", specifier = ">=2.0.40" },
     { name = "uvicorn", specifier = ">=0.34.0" },
+    { name = "zt-common", editable = "../../infra/zt-common" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "pytest-cov", specifier = ">=6.1.0" },
-    { name = "zt-devkit", editable = "../../infra/devkit" },
 ]
 
 [[package]]
@@ -1100,9 +1100,9 @@ wheels = [
 ]
 
 [[package]]
-name = "zt-devkit"
+name = "zt-common"
 version = "0.1.0"
-source = { editable = "../../infra/devkit" }
+source = { editable = "../../infra/zt-common" }
 
 [package.metadata]
 

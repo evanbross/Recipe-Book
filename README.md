@@ -24,9 +24,9 @@ Capture and organize recipes from web pages, photos, scans, and emails. Powered 
 - **PostgreSQL** reachable with the credentials in `backend/.env`
 - The sibling **`../infra`** repo, checked out next to this one, with its stack running
   (`cd ../infra && docker-compose up -d`). It provides MinIO (`dev_minio`) and the shared
-  dev Caddy. It also holds `zt-devkit` (`../infra/devkit`), the shared dev-runner and
-  Caddy-registration helpers `main.py` uses; `uv sync` installs it into `backend/.venv` as an
-  editable dev dependency, so `uv sync` fails if `../infra` is missing. The backend refuses
+  dev Caddy. It also holds `zt-common` (`../infra/zt-common`), the shared dev-runner,
+  Caddy-registration and SMTP code; `uv sync` installs it into `backend/.venv` as an
+  editable runtime dependency, so `uv sync` fails if `../infra` is missing. The backend refuses
   to start if MinIO or its bucket is unreachable.
 
 ### 1. Install and configure

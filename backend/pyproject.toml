@@ -23,13 +23,12 @@ dependencies = [
     "psycopg2-binary>=2.9.10",
     "requests>=2.32",
     "oauthlib>=3.2",
+    # Shared ZombieTech code (Caddy registration, dev-runner helpers, SMTP) from ../infra.
+    "zt-common",
 ]
 
 [dependency-groups]
 dev = [
-    # Shared dev-runner + dev-Caddy helpers from ../infra (local dev only;
-    # exported requirements use --no-dev, so they never need ../infra).
-    "zt-devkit",
     "pytest>=8.3.5",
     "pytest-cov>=6.1.0",
 ]
@@ -45,4 +44,4 @@ norecursedirs = ["tmp", ".venv", "backups", "__pycache__"]
 link-mode = "symlink"
 
 [tool.uv.sources]
-zt-devkit = { path = "../../infra/devkit", editable = true }
+zt-common = { path = "../../infra/zt-common", editable = true }
