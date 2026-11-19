@@ -42,6 +42,7 @@ import {
   purgeAllRecipes,
 } from '../api/client'
 import HouseholdSection from './HouseholdSection'  // ai: claude-opus-5-5 | 2026-11-17
+import SignInMethodsSection from './SignInMethodsSection'  // ai: claude-opus-5-5 | 2026-11-19
 import styles from './Settings.module.css'
 
 export default function Settings() {
@@ -257,6 +258,7 @@ export default function Settings() {
       <h1 className="section-title">Settings</h1>
 
       <HouseholdSection />
+      <SignInMethodsSection />{/* ai: claude-opus-5-5 | 2026-11-19 */}
 
       {/* ── Gmail Integration ──────────────────────────────────────────────── */}
       <section className={styles.section}>

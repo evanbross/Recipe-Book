@@ -7,12 +7,24 @@ const api = axios.create({ baseURL: '/api' })
 // the API redirects to Google, and the session cookie comes back on the redirect.
 export const SIGN_IN_URL = '/api/auth/login'
 
+// ai: claude-opus-5-5 | 2026-11-19
+// Full-page navigations to Google from Settings: link another Google account,
+// or prove it's you again. Both come back to /settings.
+export const GOOGLE_LINK_URL = '/api/auth/google/link'
+export const GOOGLE_REAUTH_URL = '/api/auth/reauth/google'
+
 // A 401 means the session ended (expired, signed out elsewhere, or removed from
 // the household). Send the user to the login page rather than leaving every
-// query failing. /auth/me is left to RequireAuth, which redirects on its own.
+// query failing. Exceptions, where a 401 is an answer the page shows itself:
+// /auth/me (RequireAuth redirects on its own), and a wrong password or passkey
+// at sign-in or re-auth (invalid_credentials), which must not sign anyone out.
+// ai: claude-opus-5-5 | 2026-11-19
+const ANSWERS_401_ITSELF = ['/auth/me', '/auth/password/login', '/auth/passkeys/login/', '/auth/reauth/']
+
 api.interceptors.response.use(undefined, (error) => {
-  const isMe = error.config?.url === '/auth/me'
-  if (error.response?.status === 401 && !isMe && window.location.pathname !== '/login') {
+  const url = error.config?.url ?? ''
+  const handledByCaller = ANSWERS_401_ITSELF.some((prefix) => url.startsWith(prefix))  // ai: claude-opus-5-5 | 2026-11-19
+  if (error.response?.status === 401 && !handledByCaller && window.location.pathname !== '/login') {
     window.location.assign('/login')
   }
   return Promise.reject(error)
@@ -25,6 +37,35 @@ export const getHousehold = () => api.get('/household').then(r => r.data)
 export const inviteToHousehold = (email) => api.post('/household/invites', { email }).then(r => r.data)
 export const revokeInvite = (id) => api.delete(`/household/invites/${id}`)
 export const removeHouseholdMember = (userId) => api.delete(`/household/members/${userId}`)
+
+// ── Sign-in methods ────────────────────────────────────────────────────────
+// ai: claude-opus-5-5 | 2026-11-19
+// Errors come back as axios rejections whose response.data.detail is a short
+// code; utils/authMessages.js turns it into text.
+export const passwordLogin = (email, password) => api.post('/auth/password/login', { email, password })
+export const register = (email, password, displayName) =>
+  api.post('/auth/password/register', { email, password, display_name: displayName || null })
+export const verifyEmail = (token) => api.post('/auth/password/verify', { token })
+export const forgotPassword = (email) => api.post('/auth/password/forgot', { email })
+export const resetPassword = (token, password) => api.post('/auth/password/reset', { token, password })
+export const passkeyLoginOptions = () => api.post('/auth/passkeys/login/options').then(r => r.data)
+export const passkeyLoginVerify = (flowId, credential) =>
+  api.post('/auth/passkeys/login/verify', { flow_id: flowId, credential })
+
+export const getSignInMethods = () => api.get('/auth/methods').then(r => r.data)
+export const setPassword = (password) => api.put('/auth/password', { password })
+export const removePassword = () => api.delete('/auth/password')
+export const passkeyRegisterOptions = () => api.post('/auth/passkeys/register/options').then(r => r.data)
+export const passkeyRegisterVerify = (flowId, credential, name) =>
+  api.post('/auth/passkeys/register/verify', { flow_id: flowId, credential, name: name || null }).then(r => r.data)
+export const renamePasskey = (id, name) => api.patch(`/auth/passkeys/${id}`, { name }).then(r => r.data)
+export const removePasskey = (id) => api.delete(`/auth/passkeys/${id}`)
+export const unlinkIdentity = (id) => api.delete(`/auth/identities/${id}`)
+
+export const reauthPassword = (password) => api.post('/auth/reauth/password', { password })
+export const reauthPasskeyOptions = () => api.post('/auth/reauth/passkey/options').then(r => r.data)
+export const reauthPasskeyVerify = (flowId, credential) =>
+  api.post('/auth/reauth/passkey/verify', { flow_id: flowId, credential })
 
 // ── Recipes ────────────────────────────────────────────────────────────────
 export const getRecipes = (params) => api.get('/recipes', { params }).then(r => r.data)
