@@ -25,7 +25,8 @@
       "Bash(docker exec dev_caddy *)",
       "Bash(PYTHONPATH=. uv run pytest tests/test_capture.py -v)",
       "Bash(Select-Object Name, Mode)",
-      "Bash(grep -E \"\\\\.\\(py|ps1|sh|yml\\)$\")"
+      "Bash(grep -E \"\\\\.\\(py|ps1|sh|yml\\)$\")",
+      "mcp__claude_ai_Gmail__get_message"
     ]
   }
 }
