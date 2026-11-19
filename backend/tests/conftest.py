@@ -1,5 +1,8 @@
 import json
 import os
+import secrets
+from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,6 +14,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import sessionmaker
+from zt_common import smtp as zt_smtp
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
@@ -85,8 +89,8 @@ os.environ.update(_TEST_ENV)
 
 from app.config import settings  # noqa: E402
 from app.database import (  # noqa: E402
-    ROLE_OWNER, AuthContext, Base, TenantMembership, User, bind_tenant, current_tenant_id,
-    get_current_auth, get_db,
+    ROLE_OWNER, AuthContext, Base, TenantMembership, User, UserSession, bind_tenant, current_tenant_id,
+    get_current_auth, get_db, hash_session_token,
 )
 from app.main import app  # noqa: E402
 from app import models  # noqa: E402
@@ -171,8 +175,18 @@ def signed_in_user(db_session) -> AuthContext:
     db_session.flush()
     tenant_id = current_tenant_id(db_session)
     db_session.add(TenantMembership(tenant_id=tenant_id, user_id=user.id, role=ROLE_OWNER))
+    # ai: claude-opus-5-5 | 2026-11-19
+    # A real session row, so routes that read or bump the session (re-auth) work too.
+    session = UserSession(
+        token_hash=hash_session_token(secrets.token_urlsafe(32)), user_id=user.id, tenant_id=tenant_id,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+    )
+    db_session.add(session)
     db_session.commit()
-    return AuthContext(user_id=user.id, tenant_id=tenant_id, role=ROLE_OWNER)
+    return AuthContext(
+        user_id=user.id, tenant_id=tenant_id, role=ROLE_OWNER,
+        session_id=session.id, authenticated_at=session.authenticated_at,
+    )
 
 
 # ai: claude-opus-5-5 | 2026-11-17
@@ -269,3 +283,42 @@ def fake_google_credentials(tmp_path):
     }}))
     with patch("app.services.google_oauth.GOOGLE_CREDENTIALS_FILE", path):
         yield path
+
+
+# ai: claude-opus-5-5 | 2026-11-19
+class _CapturingSmtp:
+    """Stands in for smtplib.SMTP inside zt_common.smtp: records every message
+    instead of connecting. `fail` makes the next connection refuse, like a down relay."""
+
+    sent: list[EmailMessage] = []
+    fail = False
+
+    def __init__(self, host: str, port: int, timeout: float) -> None:
+        if _CapturingSmtp.fail:
+            raise ConnectionRefusedError("relay down (test)")
+
+    def __enter__(self) -> "_CapturingSmtp":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        return None
+
+    def starttls(self) -> None:
+        return None
+
+    def login(self, user: str, password: str) -> None:
+        return None
+
+    def send_message(self, message: EmailMessage) -> None:
+        _CapturingSmtp.sent.append(message)
+
+
+# ai: claude-opus-5-5 | 2026-11-19
+@pytest.fixture()
+def sent_emails(monkeypatch) -> type[_CapturingSmtp]:
+    """Every account email the test sends, without a relay. Patched at the same
+    place as zt-common's own tests, so the real send_email code still runs."""
+    _CapturingSmtp.sent = []
+    _CapturingSmtp.fail = False
+    monkeypatch.setattr(zt_smtp.smtplib, "SMTP", _CapturingSmtp)
+    return _CapturingSmtp

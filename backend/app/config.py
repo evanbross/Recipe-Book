@@ -27,9 +27,10 @@
 import os
 import sys
 from pathlib import Path
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from zt_common.smtp import SmtpConfig
 
 # OAuthlib raises a fatal error when Google returns a superset of the requested
 # scopes (e.g. the user previously granted gmail.modify). Relax that check so
@@ -85,6 +86,18 @@ CORS_ORIGINS=http://localhost:5174
 # Sign-in (Google). Emails allowed to sign in without an invite; they join the
 # default household, and the first to sign in becomes its owner.
 AUTH_ALLOWED_EMAILS=
+
+# Account emails (password sign-up verification, password resets) go out through
+# one SMTP relay. The defaults reach ../infra's MailHog from the host; read what
+# was sent at http://mailhog.localhost.
+#SMTP_HOST=localhost
+#SMTP_PORT=11025
+#SMTP_USER=
+#SMTP_PASSWORD=
+#SMTP_USE_TLS=false
+#SMTP_FROM_ADDRESS=noreply@recipe-app.local
+# Minutes after signing in (or re-confirming) during which sign-in methods can be changed.
+#REAUTH_WINDOW_MINUTES=10
 
 # Caddy reverse proxy: main.py registers http://<CADDY_APP_NAME>.localhost with the
 # shared ../infra Caddy (zt-common's caddy_registry, from ../infra/zt-common, finds its admin port).
@@ -151,6 +164,17 @@ class Settings(BaseSettings):
     auth_allowed_emails: str = ""
     session_lifetime_days: int = 30
 
+    # ai: claude-opus-5-5 | 2026-11-19
+    # Account emails (verification, password reset) through zt_common.smtp.
+    # Defaults reach ../infra's MailHog from the host.
+    smtp_host: str = "localhost"
+    smtp_port: int = 11025
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_use_tls: bool = False
+    smtp_from_address: str = "noreply@recipe-app.local"
+    reauth_window_minutes: int = 10
+
     # Gmail / email scanning
     email_scan_labels: str = "Cooking"
     email_scan_inbox: bool = False
@@ -167,6 +191,28 @@ class Settings(BaseSettings):
     @property
     def allowed_emails(self) -> frozenset[str]:
         return frozenset(e.strip().lower() for e in self.auth_allowed_emails.split(",") if e.strip())
+
+    # ai: claude-opus-5-5 | 2026-11-19
+    @property
+    def webauthn_rp_id(self) -> str:
+        """The passkey relying-party ID: the public URL's host. Derived, so passkeys
+        and the session cookie can never end up on different hosts."""
+        host = urlparse(self.public_url).hostname
+        if not host:
+            raise ValueError(f"APP_PUBLIC_URL {self.public_url!r} has no host")
+        return host
+
+    # ai: claude-opus-5-5 | 2026-11-19
+    @property
+    def smtp_config(self) -> SmtpConfig:
+        return SmtpConfig(
+            host=self.smtp_host,
+            port=self.smtp_port,
+            from_address=self.smtp_from_address,
+            user=self.smtp_user,
+            password=self.smtp_password,
+            use_tls=self.smtp_use_tls,
+        )
 
     @model_validator(mode="after")
     def _resolve_database_url(self) -> "Settings":

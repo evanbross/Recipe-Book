@@ -25,10 +25,13 @@ dependencies = [
     "oauthlib>=3.2",
     # Shared ZombieTech code (Caddy registration, dev-runner helpers, SMTP) from ../infra.
     "zt-common",
+    "argon2-cffi>=25.1.0",
+    "webauthn>=3.0.1,<4",
 ]
 
 [dependency-groups]
 dev = [
+    "cryptography>=50",
     "pytest>=8.3.5",
     "pytest-cov>=6.1.0",
 ]

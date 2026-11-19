@@ -29,6 +29,7 @@ from app.database import (
 )
 from app.main import app
 from app.services.google_oauth import GoogleIdentity
+from tests.sign_in_helpers import follow_ticket, google_callback
 
 API_PORT = 54321
 PUBLIC_ROUTES = {
@@ -38,6 +39,16 @@ PUBLIC_ROUTES = {
     ("GET", "/auth/complete"),
     ("POST", "/auth/logout"),
     ("GET", "/email/auth/callback"),
+    # ai: claude-opus-5-5 | 2026-11-19
+    # Password and passkey sign-in (spec section 7.1). Listed one by one on purpose:
+    # the signed-in /auth routes share these routers and must still answer 401.
+    ("POST", "/auth/password/login"),
+    ("POST", "/auth/password/register"),
+    ("POST", "/auth/password/verify"),
+    ("POST", "/auth/password/forgot"),
+    ("POST", "/auth/password/reset"),
+    ("POST", "/auth/passkeys/login/options"),
+    ("POST", "/auth/passkeys/login/verify"),
 }
 
 
@@ -47,27 +58,17 @@ def _oauth_config(monkeypatch, fake_google_credentials):
     monkeypatch.setattr(settings, "auth_allowed_emails", "")
 
 
-def _sign_in(client, email: str, *, verified: bool = True, name: str | None = None) -> str:
+def _sign_in(  # ai: claude-opus-5-5 | 2026-11-19
+    client, email: str, *, verified: bool = True, name: str | None = None, subject: str | None = None,
+) -> str:
     """Run the three-hop Google sign-in; return the final redirect location."""
-    res = client.get("/auth/login", follow_redirects=False)
-    assert res.status_code == 303
-    google = parse_qs(urlparse(res.headers["location"]).query)
+    # One Google account per email unless a test says otherwise.
+    identity = GoogleIdentity(subject=subject or f"sub-{email}", email=email, email_verified=verified, name=name)
+    google, location = google_callback(client, "/auth/login", identity)
     assert google["redirect_uri"] == [f"http://localhost:{API_PORT}/auth/callback"]
-
-    identity = GoogleIdentity(email=email, email_verified=verified, name=name)
-    with patch("google_auth_oauthlib.flow.Flow.fetch_token"), \
-            patch("app.routes.auth.identity_from_flow", return_value=identity):
-        res = client.get(f"/auth/callback?code=abc&state={google['state'][0]}", follow_redirects=False)
-    assert res.status_code == 303
-    location = res.headers["location"]
     if "/auth/complete?" not in location:
         return location
-
-    assert location.startswith(f"{settings.public_url}{settings.api_public_prefix}/auth/complete?ticket=")
-    ticket = parse_qs(urlparse(location).query)["ticket"][0]
-    res = client.get(f"/auth/complete?ticket={ticket}", follow_redirects=False)
-    assert res.status_code == 303
-    return res.headers["location"]
+    return follow_ticket(client, location)
 
 
 def _membership(db_session, email: str) -> TenantMembership | None:
@@ -81,7 +82,8 @@ def _membership(db_session, email: str) -> TenantMembership | None:
 def _concrete(path: str) -> str:
     return path.replace("{key:path}", "tenants/1/x.jpg").replace("{", "").replace("}", "").replace(
         "recipe_id", "1").replace("tag_id", "1").replace("site_id", "1").replace(
-        "candidate_id", "1").replace("invite_id", "1").replace("user_id", "1")
+        "candidate_id", "1").replace("invite_id", "1").replace("user_id", "1").replace(
+        "passkey_id", "1").replace("identity_id", "1")  # ai: claude-opus-5-5 | 2026-11-19
 
 
 def _protected_routes() -> list[tuple[str, str]]:
@@ -154,7 +156,7 @@ def test_sign_in_ticket_works_once(anon_client, monkeypatch):
     monkeypatch.setattr(settings, "auth_allowed_emails", "cook@example.com")
     res = anon_client.get("/auth/login", follow_redirects=False)
     state = parse_qs(urlparse(res.headers["location"]).query)["state"][0]
-    identity = GoogleIdentity(email="cook@example.com", email_verified=True, name=None)
+    identity = GoogleIdentity(subject="sub-cook", email="cook@example.com", email_verified=True, name=None)
     with patch("google_auth_oauthlib.flow.Flow.fetch_token"), \
             patch("app.routes.auth.identity_from_flow", return_value=identity):
         res = anon_client.get(f"/auth/callback?code=abc&state={state}", follow_redirects=False)
@@ -170,7 +172,7 @@ def test_session_cookie_flags(anon_client, monkeypatch):
     monkeypatch.setattr(settings, "auth_allowed_emails", "cook@example.com")
     res = anon_client.get("/auth/login", follow_redirects=False)
     state = parse_qs(urlparse(res.headers["location"]).query)["state"][0]
-    identity = GoogleIdentity(email="cook@example.com", email_verified=True, name=None)
+    identity = GoogleIdentity(subject="sub-cook", email="cook@example.com", email_verified=True, name=None)
     with patch("google_auth_oauthlib.flow.Flow.fetch_token"), \
             patch("app.routes.auth.identity_from_flow", return_value=identity):
         res = anon_client.get(f"/auth/callback?code=abc&state={state}", follow_redirects=False)

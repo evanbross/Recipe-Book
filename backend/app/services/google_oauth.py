@@ -100,9 +100,11 @@ def build_flow(scopes: list[str], redirect_path: str) -> Flow:
 
 @dataclass(frozen=True)
 class GoogleIdentity:
+    subject: str        # Google's stable account id ("sub"); emails can change hands  # ai: claude-opus-5-5 | 2026-11-19
     email: str          # lower-cased
     email_verified: bool
     name: str | None
+    auth_time: int | None = None   # when the user last typed their Google password (epoch s), if Google says  # ai: claude-opus-5-5 | 2026-11-19
 
 
 def identity_from_flow(flow: Flow) -> GoogleIdentity:
@@ -119,8 +121,15 @@ def identity_from_flow(flow: Flow) -> GoogleIdentity:
     email = claims.get("email")
     if not email:
         raise ValueError("Google ID token has no email claim.")
+    # ai: claude-opus-5-5 | 2026-11-19
+    subject = claims.get("sub")
+    if not subject:
+        raise ValueError("Google ID token has no sub claim.")
+    auth_time = claims.get("auth_time")
     return GoogleIdentity(
+        subject=str(subject),
         email=email.strip().lower(),
         email_verified=bool(claims.get("email_verified")),
         name=claims.get("name"),
+        auth_time=int(auth_time) if auth_time is not None else None,
     )

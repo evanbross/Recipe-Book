@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import NotSignedInError, engine, get_current_auth, get_db  # ai: claude-opus-5-5 | 2026-11-17
 from app import models
-from app.routes import auth, capture, email_scan, households, images, recipes, search, tags, watchlist  # ai: claude-opus-5-5 | 2026-11-17
+from app.routes import (  # ai: claude-opus-5-5 | 2026-11-19
+    auth, auth_passkeys, auth_password, capture, email_scan, households, images, recipes, search, tags, watchlist,
+)
 from app.routes.households import require_owner
 from app.services import storage as storage_svc
 from app.services.storage import check_connectivity as check_minio
@@ -72,7 +74,10 @@ for _router in (
     watchlist.router, images.router, households.router,
 ):
     app.include_router(_router, dependencies=_signed_in)
+# Public sign-in routes; signed-in ones among them declare get_current_auth themselves.  # ai: claude-opus-5-5 | 2026-11-19
 app.include_router(auth.router)
+app.include_router(auth_password.router)
+app.include_router(auth_passkeys.router)
 app.include_router(email_scan.callback_router)
 
 

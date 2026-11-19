@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 from pydantic import BaseModel, Field, StringConstraints, computed_field, model_validator
 
 from app.config import settings  # ai: claude-opus-5-5 | 2026-11-16
@@ -346,9 +346,81 @@ class HouseholdOut(BaseModel):
     invites: list[HouseholdInviteOut]
     model_config = {"from_attributes": True}
 
+# ai: claude-opus-5-5 | 2026-11-19
+# Lower-cased like users.email, so every lookup by email (invites, sign-in,
+# registration) matches however the address was typed.
+EmailAddress = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, to_lower=True, max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$"),
+]
+
 class InviteCreate(BaseModel):
-    # Lower-cased like users.email, so an invite always matches the Google sign-in it waits for.
-    email: Annotated[
-        str,
-        StringConstraints(strip_whitespace=True, to_lower=True, max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$"),
-    ]
+    email: EmailAddress  # ai: claude-opus-5-5 | 2026-11-19
+
+
+# ── Sign-in methods ───────────────────────────────────────────────────────────
+# ai: claude-opus-5-5 | 2026-11-19
+# Password length rules (12-256) live in services/passwords.py so a short one
+# comes back as `weak_password:too_short`, not a generic validation error. The
+# cap here only stops a megabyte "password" from reaching the hasher.
+Password = Annotated[str, StringConstraints(min_length=1, max_length=1024)]
+# What the browser's navigator.credentials.create()/.get() returned, as JSON.
+# py_webauthn parses and verifies its structure.
+WebAuthnCredentialJSON = dict[str, Any]
+PasskeyName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+
+class PasswordLoginRequest(BaseModel):
+    email: EmailAddress
+    password: Password
+
+class RegisterRequest(BaseModel):
+    email: EmailAddress
+    password: Password
+    display_name: Optional[Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)]] = None
+
+class TokenRequest(BaseModel):
+    token: Annotated[str, StringConstraints(min_length=1, max_length=200)]
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailAddress
+
+class ResetPasswordRequest(TokenRequest):
+    password: Password
+
+class PasswordRequest(BaseModel):
+    password: Password
+
+class PasskeyOptionsOut(BaseModel):
+    flow_id: str
+    options: dict[str, Any]   # PublicKeyCredential{Creation,Request}OptionsJSON for @simplewebauthn/browser
+
+class PasskeyVerifyRequest(BaseModel):
+    flow_id: str
+    credential: WebAuthnCredentialJSON
+
+class PasskeyRegisterRequest(PasskeyVerifyRequest):
+    name: Optional[PasskeyName] = None
+
+class PasskeyRenameRequest(BaseModel):
+    name: PasskeyName
+
+class PasskeyOut(BaseModel):
+    id: int
+    name: str
+    created_at: datetime
+    last_used_at: Optional[datetime] = None
+    backed_up: bool
+    model_config = {"from_attributes": True}
+
+class LinkedGoogleOut(BaseModel):
+    id: int
+    email: str
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+class SignInMethodsOut(BaseModel):
+    has_password: bool
+    passkeys: list[PasskeyOut]
+    google: list[LinkedGoogleOut]
+    # Until when sign-in methods can be changed without proving it's you again.
+    reauth_valid_until: datetime

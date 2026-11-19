@@ -23,7 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import Tenant, TenantInvite, TenantMembership, User, current_tenant_id
-from app.services.auth import SessionService
+from app.services.sessions import SessionService  # ai: claude-opus-5-5 | 2026-11-19
 
 logger = logging.getLogger(__name__)
 
