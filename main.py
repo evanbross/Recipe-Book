@@ -49,13 +49,13 @@ import sys
 import time
 from pathlib import Path
 
-# ai: claude-opus-5-5 | 2026-11-12
-# Shared dev-runner and dev-Caddy helpers: the zt-devkit package in ../infra/devkit,
-# installed into backend/.venv as an editable dev dependency by `uv sync`.
+# ai: claude-opus-5-5 | 2026-11-19
+# Shared dev-runner and Caddy helpers: the zt-common package in ../infra/zt-common,
+# a runtime dependency that `uv sync` installs into backend/.venv.
 try:
-    from zt_devkit import caddy_registry, devrun
+    from zt_common import caddy_registry, devrun
 except ImportError:
-    print("[main] ERROR: zt-devkit is not installed. Check out the infra repo at ../infra, "
+    print("[main] ERROR: zt-common is not installed. Check out the infra repo at ../infra, "
           "then run: cd backend && uv sync", flush=True)
     sys.exit(1)
 

@@ -83,7 +83,7 @@ SECRET_KEY=change-this-to-a-random-secret-key
 CORS_ORIGINS=http://localhost:5174
 
 # Caddy reverse proxy: main.py registers http://<CADDY_APP_NAME>.localhost with the
-# shared ../infra Caddy (zt-devkit's caddy_registry, from ../infra/devkit, finds its admin port).
+# shared ../infra Caddy (zt-common's caddy_registry, from ../infra/zt-common, finds its admin port).
 # /api/* and /* go to free ports chosen at each startup (FastAPI, Vite).
 CADDY_APP_NAME=recipe-app
 """
