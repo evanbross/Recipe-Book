@@ -77,7 +77,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_sign_in_session)) 
     except WeakPasswordError as exc:
         raise _weak(exc) from None
     db.commit()
-    send_account_email(email)
+    send_account_email(email, db)
     return Response(status_code=status.HTTP_202_ACCEPTED)
 
 
@@ -96,7 +96,7 @@ def verify_email(body: TokenRequest, db: Session = Depends(get_sign_in_session))
 def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_sign_in_session)) -> Response:
     email = PasswordService(db).start_reset(body.email)
     db.commit()
-    send_account_email(email)
+    send_account_email(email, db)
     return Response(status_code=status.HTTP_202_ACCEPTED)
 
 

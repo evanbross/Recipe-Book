@@ -325,6 +325,8 @@ class MeOut(BaseModel):
     user: SignedInUser
     household: HouseholdRef
     role: str
+    is_admin: bool = False  # ai: gpt-5 | 2026-11-21
+
 
 class HouseholdMemberOut(BaseModel):
     user_id: int
@@ -353,6 +355,25 @@ EmailAddress = Annotated[
     str,
     StringConstraints(strip_whitespace=True, to_lower=True, max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$"),
 ]
+
+
+class SmtpSettingsOut(BaseModel):
+    host: str
+    port: int
+    user: str
+    use_tls: bool
+    from_address: EmailAddress
+    password_set: bool
+    source: str
+
+
+class SmtpSettingsUpdate(BaseModel):
+    host: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
+    port: int = Field(ge=1, le=65535)
+    user: Annotated[str, StringConstraints(strip_whitespace=True, max_length=320)] = ""
+    password: Optional[Annotated[str, StringConstraints(max_length=1024)]] = None
+    use_tls: bool = True
+    from_address: EmailAddress
 
 class InviteCreate(BaseModel):
     email: EmailAddress  # ai: claude-opus-5-5 | 2026-11-19

@@ -162,6 +162,9 @@ class Settings(BaseSettings):
     # Comma-separated emails allowed to sign in without an invite. On first
     # sign-in they join the default household (the first becomes its owner).
     auth_allowed_emails: str = ""
+    # Server administrators. Unlike household owners, admins can change global
+    # infrastructure such as the outbound SMTP relay.
+    auth_admin_emails: str = ""  # ai: gpt-5 | 2026-11-21
     session_lifetime_days: int = 30
 
     # ai: claude-opus-5-5 | 2026-11-19
@@ -191,6 +194,10 @@ class Settings(BaseSettings):
     @property
     def allowed_emails(self) -> frozenset[str]:
         return frozenset(e.strip().lower() for e in self.auth_allowed_emails.split(",") if e.strip())
+
+    @property
+    def admin_emails(self) -> frozenset[str]:
+        return frozenset(e.strip().lower() for e in self.auth_admin_emails.split(",") if e.strip())  # ai: gpt-5 | 2026-11-21
 
     # ai: claude-opus-5-5 | 2026-11-19
     @property

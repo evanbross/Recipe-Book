@@ -281,6 +281,7 @@ class AuthContext:
     role: str
     session_id: int
     authenticated_at: datetime   # when this session last proved who the user is
+    is_admin: bool = False  # ai: gpt-5 | 2026-11-21
 
     @property
     def reauth_valid_until(self) -> datetime:
@@ -305,8 +306,9 @@ def get_current_auth(request: Request, db: Session = Depends(get_request_session
     row = db.execute(
         select(  # ai: claude-opus-5-5 | 2026-11-19
             UserSession.id, UserSession.user_id, UserSession.tenant_id, UserSession.authenticated_at,
-            TenantMembership.role,
+            TenantMembership.role, User.email,
         )
+        .join(User, User.id == UserSession.user_id)
         .join(
             TenantMembership,
             (TenantMembership.user_id == UserSession.user_id)
@@ -319,7 +321,16 @@ def get_current_auth(request: Request, db: Session = Depends(get_request_session
     return AuthContext(  # ai: claude-opus-5-5 | 2026-11-19
         user_id=row.user_id, tenant_id=row.tenant_id, role=row.role,
         session_id=row.id, authenticated_at=row.authenticated_at,
+        is_admin=row.email.lower() in settings.admin_emails,
     )
+
+
+# ai: gpt-5 | 2026-11-21
+def require_admin(auth: AuthContext = Depends(get_current_auth)) -> AuthContext:
+    """Only a server administrator may access global infrastructure settings."""
+    if not auth.is_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="admin_required")
+    return auth
 
 
 # ai: claude-opus-5-5 | 2026-11-19
@@ -333,6 +344,14 @@ def require_recent_auth(auth: AuthContext = Depends(get_current_auth)) -> AuthCo
     left open on a shared computer can't add the attacker's passkey."""
     if _utcnow() > auth.reauth_valid_until:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail=REAUTH_REQUIRED)
+    return auth
+
+
+# ai: gpt-5 | 2026-11-21
+def require_recent_admin(auth: AuthContext = Depends(require_recent_auth)) -> AuthContext:
+    """Admin access plus a recent proof of identity for credential changes."""
+    if not auth.is_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="admin_required")
     return auth
 
 

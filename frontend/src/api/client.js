@@ -67,6 +67,11 @@ export const reauthPasskeyOptions = () => api.post('/auth/reauth/passkey/options
 export const reauthPasskeyVerify = (flowId, credential) =>
   api.post('/auth/reauth/passkey/verify', { flow_id: flowId, credential })
 
+// ── Server administration ─────────────────────────────────────────────────
+export const getSmtpSettings = () => api.get('/admin/smtp').then(r => r.data)
+export const updateSmtpSettings = (data) => api.put('/admin/smtp', data).then(r => r.data)
+export const testSmtpSettings = () => api.post('/admin/smtp/test')
+
 // ── Recipes ────────────────────────────────────────────────────────────────
 export const getRecipes = (params) => api.get('/recipes', { params }).then(r => r.data)
 export const getRecipe = (id) => api.get(`/recipes/${id}`).then(r => r.data)

@@ -43,6 +43,7 @@ import {
 } from '../api/client'
 import HouseholdSection from './HouseholdSection'  // ai: claude-opus-5-5 | 2026-11-17
 import SignInMethodsSection from './SignInMethodsSection'  // ai: claude-opus-5-5 | 2026-11-19
+import SmtpSettingsSection from './SmtpSettingsSection'  // ai: gpt-5 | 2026-11-21
 import styles from './Settings.module.css'
 
 export default function Settings() {
@@ -259,6 +260,7 @@ export default function Settings() {
 
       <HouseholdSection />
       <SignInMethodsSection />{/* ai: claude-opus-5-5 | 2026-11-19 */}
+      <SmtpSettingsSection />
 
       {/* ── Gmail Integration ──────────────────────────────────────────────── */}
       <section className={styles.section}>

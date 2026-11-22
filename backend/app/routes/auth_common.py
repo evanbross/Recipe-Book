@@ -69,13 +69,13 @@ def finish_sign_in(db: Session, user_id: int, auth_method: str) -> Response:
 
 
 # ai: claude-opus-5-5 | 2026-11-19
-def send_account_email(email: EmailToSend | None) -> None:
+def send_account_email(email: EmailToSend | None, db: Session) -> None:
     """Send after the caller has committed and is done with its DB work: a send
     can take the full SMTP timeout. None means the service decided not to send."""
     if email is None:
         return
     try:
-        AccountEmailService().send(email)
+        AccountEmailService(db).send(email)
     except SmtpDeliveryError:
         # zt_common logged the relay and reason; the client only learns it failed.
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=EMAIL_FAILED) from None

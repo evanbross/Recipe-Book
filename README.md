@@ -112,6 +112,11 @@ Once someone belongs to a household, the membership is what counts: removing the
 `AUTH_ALLOWED_EMAILS` doesn't lock them out. The owner removes them in Settings instead,
 which signs them out immediately. Sessions last 30 days (`SESSION_LIFETIME_DAYS`).
 
+Server administrators are listed separately in `AUTH_ADMIN_EMAILS`. They must still be
+allowed or invited to sign in. Admin status is global and is not the same as being a
+household owner; administrators can configure the outgoing SMTP relay under
+**Settings → Outgoing Mail** and send themselves a test message.
+
 ---
 
 ## Configuration
@@ -126,7 +131,8 @@ key with comments. If `.env` is missing, the backend writes a template and exits
 | Claude | `ANTHROPIC_API_KEY` | From https://console.anthropic.com |
 | Image storage | `MINIO_*` | Endpoint, keys and bucket. The bucket stays private: images are served through the API (`GET /images/{key}`) |
 | Households | `DEFAULT_TENANT_SLUG`, `API_PUBLIC_PREFIX` | Household allowlisted users join (default `default`); path the browser reaches the API under (default `/api`) |
-| Sign-in | `AUTH_ALLOWED_EMAILS`, `SESSION_LIFETIME_DAYS`, `APP_PUBLIC_URL` | See [Signing in](#signing-in). `APP_PUBLIC_URL` defaults to `http://<CADDY_APP_NAME>.localhost`. `API_PORT` is set by `main.py` |
+| Sign-in | `AUTH_ALLOWED_EMAILS`, `AUTH_ADMIN_EMAILS`, `SESSION_LIFETIME_DAYS`, `APP_PUBLIC_URL` | See [Signing in](#signing-in). `APP_PUBLIC_URL` defaults to `http://<CADDY_APP_NAME>.localhost`. `API_PORT` is set by `main.py` |
+| Outgoing mail | `SMTP_*` | Environment values are the initial fallback. An administrator can replace them under **Settings → Outgoing Mail**; the saved password is encrypted using `SECRET_KEY`, so keep that key stable |
 | App | `SECRET_KEY`, `CORS_ORIGINS` | |
 | Caddy | `CADDY_APP_NAME` | App hostname (`<name>.localhost`) |
 | Email scanning | `EMAIL_SCAN_*` | Gmail OAuth uses the same credentials as sign-in, in `backend/credentials/` |

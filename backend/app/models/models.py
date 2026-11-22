@@ -177,6 +177,14 @@ class AppSetting(TenantScoped, Base):
     value: Mapped[str] = mapped_column(Text)
 
 
+class SystemSetting(Base):
+    """Server-wide settings. Secrets inside values are application-encrypted."""
+    __tablename__ = "system_settings"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+
+
 class RecipeImageCandidate(TenantScoped, Base):
     """Up to 3 candidate images for an email-sourced recipe, pending user selection."""
     __tablename__ = "recipe_image_candidates"

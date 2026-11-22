@@ -1,6 +1,6 @@
 from app.models.models import (
     Recipe, Tag, TagCategory, recipe_tags,
-    ScannedEmail, EmailRecipeCandidate, AppSetting,
+    ScannedEmail, EmailRecipeCandidate, AppSetting, SystemSetting,
     RecipeImageCandidate, EmailImagePreference,
     WatchedSite,
 )

@@ -7,19 +7,16 @@
 # Licensing inquiries: license@zombietech.biz
 # =============================================================================
 # ai: claude-opus-5-5 | 2026-11-19
-"""Account emails (verify a new account, reset a password) through zt_common.smtp.
-
-No database access, on purpose: a send can take up to the SMTP timeout (10 s),
-so callers commit and release their DB session first, then send.
-SmtpDeliveryError propagates; zt_common has already logged it.
-"""
+"""Account emails through the admin-configured relay or environment fallback."""
 from dataclasses import dataclass
 from typing import Literal
 from urllib.parse import quote
 
+from sqlalchemy.orm import Session
 from zt_common.smtp import send_email
 
 from app.config import settings
+from app.services.system_settings import SystemSmtpSettings
 
 _SUBJECT_PREFIX = "RecipeBox — "
 
@@ -48,6 +45,10 @@ def reset_password_link(token: str) -> str:
 # ai: claude-opus-5-5 | 2026-11-19
 class AccountEmailService:
     """Composes and sends the account emails. Plain text only."""
+
+    # ai: gpt-5 | 2026-11-21
+    def __init__(self, db: Session) -> None:
+        self._smtp = SystemSmtpSettings(db)
 
     def send(self, email: EmailToSend) -> None:
         if email.kind == "verification":
@@ -81,6 +82,5 @@ class AccountEmailService:
             "your password hasn't changed.\n"
         ))
 
-    @staticmethod
-    def _send(to: str, subject: str, body: str) -> None:
-        send_email(settings.smtp_config, to=to, subject=_SUBJECT_PREFIX + subject, body_text=body)
+    def _send(self, to: str, subject: str, body: str) -> None:
+        send_email(self._smtp.effective_config(), to=to, subject=_SUBJECT_PREFIX + subject, body_text=body)

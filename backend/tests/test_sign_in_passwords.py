@@ -237,13 +237,13 @@ def _mailhog_running() -> bool:
 
 
 @pytest.mark.skipif(not _mailhog_running(), reason="MailHog (../infra) is not running")
-def test_account_email_arrives_in_real_mailhog():
+def test_account_email_arrives_in_real_mailhog(db_session):
     """The real boundary: this app's settings.smtp_config talking SMTP to MailHog."""
     # A unique recipient, so this finds its own message among whatever MailHog holds.
     to = f"mailhog-{uuid.uuid4().hex[:12]}@example.com"
     link = f"{settings.public_url}/reset-password?token=t"
 
-    AccountEmailService().send_password_reset(to, link)
+    AccountEmailService(db_session).send_password_reset(to, link)
 
     query = urllib.parse.urlencode({"kind": "to", "query": to})
     with urllib.request.urlopen(f"{_MAILHOG_API}/search?{query}", timeout=5) as response:

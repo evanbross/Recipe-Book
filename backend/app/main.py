@@ -12,7 +12,7 @@ from app.config import settings
 from app.database import NotSignedInError, engine, get_current_auth, get_db  # ai: claude-opus-5-5 | 2026-11-17
 from app import models
 from app.routes import (  # ai: claude-opus-5-5 | 2026-11-19
-    auth, auth_passkeys, auth_password, capture, email_scan, households, images, recipes, search, tags, watchlist,
+    admin, auth, auth_passkeys, auth_password, capture, email_scan, households, images, recipes, search, tags, watchlist,
 )
 from app.routes.households import require_owner
 from app.services import storage as storage_svc
@@ -78,6 +78,7 @@ for _router in (
 app.include_router(auth.router)
 app.include_router(auth_password.router)
 app.include_router(auth_passkeys.router)
+app.include_router(admin.router)  # ai: gpt-5 | 2026-11-21 — self-protected by system-admin dependencies.
 app.include_router(email_scan.callback_router)
 
 
