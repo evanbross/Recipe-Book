@@ -5,6 +5,13 @@
 @../Dev-Standards/REACT_STANDARDS.md
 @../Dev-Standards/FASTAPI_STANDARDS.md
 @../Dev-Standards/TESTING_STANDARDS.md
+@../Dev-Standards/INFRASTRUCTURE_STANDARDS.md
+
+## recipe-box-rust
+
+A standalone Rust (Axum) learning scaffold at `recipe-box-rust/`. Not called by the
+FastAPI backend, not registered with Caddy, not referenced by any Compose file — treat
+it as unintegrated until `AGENTS.md` says otherwise.
 
 ## SQLAlchemy / Python Datetime
 

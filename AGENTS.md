@@ -101,6 +101,8 @@ Key files:
 **Other**
 - `browser-extension/` — Chrome/Edge MV3 extension: captures the open tab's HTML and posts it to `/capture/html`
 - `launcher.py` — Tkinter GUI wrapper around `main.py`
+- `recipe-box-rust/` — standalone Rust (Axum) learning scaffold. Not called by the backend,
+  not registered with Caddy, no Compose file. Treat as unintegrated until this note changes.
 
 **Tests**
 - `backend/tests/conftest.py` — pytest fixtures: real Postgres test DB (built from
