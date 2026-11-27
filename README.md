@@ -353,5 +353,6 @@ Recipe App/
 │   │   ├── pages/           # Home, RecipeDetail, AddRecipe, Search, Settings
 │   │   └── utils/
 │   └── package.json
-└── browser-extension/       # Chrome/Edge extension: capture the open tab via /capture/html
+├── browser-extension/       # Chrome/Edge extension: capture the open tab via /capture/html
+└── recipe-box-rust/         # Rust (Axum) learning scaffold -- standalone, not yet integrated
 ```
